@@ -15,7 +15,7 @@ a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
 miu_g = 0.35 # coeficient of friction between slider and table
 T = 5 # time of the simulation is seconds
-N = 100 # numer of increments per second
+N = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
 #  -------------------------------------------------------------------
 ## Computing Problem constants
@@ -105,6 +105,8 @@ ani = animation.FuncAnimation(fig, animate, init_func=init, \
         frames=N*T,
         interval=T,
         blit=True, repeat=False)
+## to save animation, uncomment the line below:
+## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
 #show the animation
 plt.show()
 #  -------------------------------------------------------------------
