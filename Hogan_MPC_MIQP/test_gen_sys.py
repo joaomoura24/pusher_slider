@@ -25,11 +25,12 @@ r_pusher = 0.01 # radious of the cilindrical pusher in meter
 #  -------------------------------------------------------------------
 N = T*freq # total number of iterations
 A = a**2 # area of the slider in meter square
-f_max = miu_g*m*g # limit force in Newton
 # Area integral of norm of the distance for a square:
-int_square = lambda a: dblquad(lambda x,y: np.square(x**2 + y**2), -a/2, a/2, -a/2, a/2)[0]
+int_square = lambda a: dblquad(lambda x,y: np.sqrt((x**2) + (y**2)), -a/2, a/2, -a/2, a/2)[0]
 int_A = int_square(a)
-m_max = 10000000*miu_g*m*g*int_A/A # limit torque Newton meter
+# Compute f and m max
+f_max = miu_g*m*g # limit force in Newton
+m_max = miu_g*m*g*int_A/A # limit torque Newton meter
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -49,11 +50,12 @@ u = cs.SX.sym('u', 3)
 
 ## Build Motion Model
 #  -------------------------------------------------------------------
-L = cs.diag(cs.SX([f_max,f_max,m_max]))
+c = m_max/f_max
+L = cs.SX.sym('L', cs.Sparsity.diag(3))
+L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
 ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
 R = cs.SX(3,3)
 R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
-print('R:',R)
 R_func = cs.Function('R', [x], [R])
 xc = -a/2; yc = (a/2)*cs.sin(x[3])
 Jc = cs.SX(2,3)
@@ -61,21 +63,17 @@ Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
 B = cs.SX(Jc.T)
 #  -------------------------------------------------------------------
 rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-print('rc:',rc)
 p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
 p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
 #  -------------------------------------------------------------------
 f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
-print('RL:',cs.mtimes(R,L))
-print('RLB:',cs.mtimes(cs.mtimes(R,L),B))
 f_func = cs.Function('f', [x,u], [f])
-#sys.exit(1)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory (line)
 #  -------------------------------------------------------------------
 # constant input and initial state
-u_const = [0.03, 0.0, 0.2]
+u_const = [0.05, 0.0, -0.1]
 x0 = [0, 0, 10*(np.pi/180), 0]
 #  -------------------------------------------------------------------
 t = cs.SX.sym('t')
