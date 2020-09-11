@@ -17,7 +17,7 @@ g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
 miu_g = 0.35 # coeficient of friction between slider and table
-T = 5 # time of the simulation is seconds
+T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
 #  -------------------------------------------------------------------
@@ -73,8 +73,8 @@ f_func = cs.Function('f', [x,u], [f])
 ## Generate Nominal Trajectory (line)
 #  -------------------------------------------------------------------
 # constant input and initial state
-u_const = [0.05, 0.0, -0.1]
-x0 = [0, 0, 10*(np.pi/180), 0]
+u_const = [0.05, 0.0, 0.0]
+x0 = [0, 0, 0*(np.pi/180), 0]
 #  -------------------------------------------------------------------
 t = cs.SX.sym('t')
 dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
@@ -115,14 +115,6 @@ ax_ang.set(xlabel='time [s]', ylabel='angles [degrees]',
                title='Angles of pusher and Slider')
 ax_ang.grid()
 #  -------------------------------------------------------------------
-## ax_fn.plot(ts[0:N-1], U_opt[0,:], color='b', label='norm')
-## ax_fn.plot(ts[0:N-1], U_opt[1,:], color='g', label='tan')
-## handles, labels = ax_fn.get_legend_handles_labels()
-## ax_fn.legend(handles, labels)
-## ax_fn.set(xlabel='time [s]', ylabel='force [N]',
-##                title='Pusher forces on slider')
-## ax_fn.grid()
-#  -------------------------------------------------------------------
 plt.show(block=False)
 #sys.exit(1)
 #  -------------------------------------------------------------------
@@ -133,13 +125,14 @@ plt.show(block=False)
 fig = plt.figure()
 fig.canvas.set_window_title('Matplotlib Animation')
 ax = fig.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(-0.1,0.5), ylim=(-0.1,0.5) \
+        xlim=(-0.1,0.6), ylim=(-0.1,0.1) \
 )
 ax.plot(x_nom[0,:], x_nom[1,:], color='red', linewidth=2.0, linestyle='dashed')
 ax.plot(x_nom[0,0], x_nom[1,0], x_nom[0,-1], x_nom[1,-1], marker='o', color='red')
-ax.grid(); ax.set_axisbelow(True)
+ax.grid();
+#ax.set_axisbelow(True)
+ax.set_aspect('equal', 'box')
 ax.set_title('Pusher-Slider Motion Animation')
-#slider = patches.Rectangle(x0[0:2]-np.array([a/2, a/2]), a, a, (180/np.pi)*x0[2])
 ang0 = 0
 d0 = np.array(cs.mtimes(R_func(x0),[-a/2, -a/2, 0]).T)[0]
 slider = patches.Rectangle(x0[0:2]+d0[0:2], a, a, ang0)
