@@ -133,9 +133,8 @@ ax.grid();
 #ax.set_axisbelow(True)
 ax.set_aspect('equal', 'box')
 ax.set_title('Pusher-Slider Motion Animation')
-ang0 = 0
 d0 = np.array(cs.mtimes(R_func(x0),[-a/2, -a/2, 0]).T)[0]
-slider = patches.Rectangle(x0[0:2]+d0[0:2], a, a, ang0)
+slider = patches.Rectangle(x0[0:2]+d0[0:2], a, a, x0[2])
 pusher = patches.Circle(np.array(p_pusher_func(x0)), radius=r_pusher, color='black')
 def init():
     ax.add_patch(slider)
