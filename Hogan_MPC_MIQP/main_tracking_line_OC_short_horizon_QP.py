@@ -31,6 +31,7 @@ miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
+N_MPC = 100 # time horizon for the MPC controller
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -105,16 +106,16 @@ U_nom = cs.repmat(u_const, 1, N-1)
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 # Set nominal trajectory to numerical values
-X_nom = np.array(X_nom)
-U_nom = np.array(cs.DM(U_nom))
+X_nom = np.array(X_nom[:,0:N_MPC])
+U_nom = np.array(cs.DM(U_nom[:,0:N_MPC-1]))
 ## ---- Input variables ---
-X_bar = cs.SX.sym('x_bar', 4, N)
-U_bar = cs.SX.sym('u_bar', 3, N-1)
+X_bar = cs.SX.sym('x_bar', 4, N_MPC)
+U_bar = cs.SX.sym('u_bar', 3, N_MPC-1)
 ## ---- Optimization objective ----------
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
 Cost = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
-for i in range(N-1):
+for i in range(N_MPC-1):
     Cost += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
 ## ---- Initialize variables for optimization problem ---
 w=[]
@@ -127,18 +128,18 @@ ubg = []
 ## ---- Initial Conditions ----
 x0 = [-0.01, 0.03, 30*(np.pi/180.), 0]
 xf = np.transpose(np.array(X_nom[:,-1].T)[0])
-X0 = np.transpose(np.linspace(x0,xf,N))
+X0 = np.transpose(np.linspace(x0,xf,N_MPC))
 g += [X_bar[:,0]+X_nom[:,0]-x0]
 lbg += [0, 0, 0, 0]
 ubg += [0, 0, 0, 0]
-for i in range(N-1):
+for i in range(N_MPC-1):
     ## ---- Dynamic constraints ----
     Ai = A_func(X_nom[:,i], U_nom[:,i])
     Bi = B_func(X_nom[:,i], U_nom[:,i])
     g += [X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
     lbg += [0, 0, 0, 0]
     ubg += [0, 0, 0, 0]
-for i in range(N-1):
+for i in range(N_MPC-1):
     ## ---- Control constraints ----
     g += [miu_p*U_bar[0,i]+U_bar[1,i]]
     lbg += [-(miu_p*U_nom[0,i]+U_nom[1,i])]
@@ -146,7 +147,7 @@ for i in range(N-1):
     g += [miu_p*U_bar[0,i]-U_bar[1,i]]
     lbg += [-(miu_p*U_nom[0,i]-U_nom[1,i])]
     ubg += [cs.inf]
-for i in range(N-1):
+for i in range(N_MPC-1):
     ## ---- Add States to optimization variables ---
     w += [X_bar[:,i]]
     lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
@@ -200,32 +201,32 @@ ax_y = fig.add_subplot(spec[0, 1])
 ax_ang = fig.add_subplot(spec[1, 0])
 ax_fn = fig.add_subplot(spec[1, 1])
 #  -------------------------------------------------------------------
-ax_x.plot(ts, X_nom[0,:], color='b', label='nom')
-ax_x.plot(ts, X_opt[0,:], color='r', label='opt')
+ax_x.plot(ts[0:N_MPC], X_nom[0,:], color='b', label='nom')
+ax_x.plot(ts[0:N_MPC], X_opt[0,:], color='r', label='opt')
 handles, labels = ax_x.get_legend_handles_labels()
 ax_x.legend(handles, labels)
 ax_x.set(xlabel='time [s]', ylabel='position [m]',
                title='Slider CoM x position')
 ax_x.grid()
 #  -------------------------------------------------------------------
-ax_y.plot(ts, X_nom[1,:], color='b', label='nom')
-ax_y.plot(ts, X_opt[1,:], color='r', label='opt')
+ax_y.plot(ts[0:N_MPC], X_nom[1,:], color='b', label='nom')
+ax_y.plot(ts[0:N_MPC], X_opt[1,:], color='r', label='opt')
 handles, labels = ax_y.get_legend_handles_labels()
 ax_y.legend(handles, labels)
 ax_y.set(xlabel='time [s]', ylabel='position [m]',
                title='Slider CoM y position')
 ax_y.grid()
 #  -------------------------------------------------------------------
-ax_ang.plot(ts, X_opt[2,:]*(180/np.pi), color='b', label='slider')
-ax_ang.plot(ts, X_opt[3,:]*(180/np.pi), color='r', label='pusher')
+ax_ang.plot(ts[0:N_MPC], X_opt[2,:]*(180/np.pi), color='b', label='slider')
+ax_ang.plot(ts[0:N_MPC], X_opt[3,:]*(180/np.pi), color='r', label='pusher')
 handles, labels = ax_ang.get_legend_handles_labels()
 ax_ang.legend(handles, labels)
 ax_ang.set(xlabel='time [s]', ylabel='angles [degrees]',
                title='Angles of pusher and Slider')
 ax_ang.grid()
 #  -------------------------------------------------------------------
-ax_fn.plot(ts[0:N-1], U_opt[0,:], color='b', label='norm')
-ax_fn.plot(ts[0:N-1], U_opt[1,:], color='g', label='tan')
+ax_fn.plot(ts[0:N_MPC-1], U_opt[0,:], color='b', label='norm')
+ax_fn.plot(ts[0:N_MPC-1], U_opt[1,:], color='g', label='tan')
 handles, labels = ax_fn.get_legend_handles_labels()
 ax_fn.legend(handles, labels)
 ax_fn.set(xlabel='time [s]', ylabel='force [N]',
@@ -278,7 +279,7 @@ def animate(i, slider, pusher):
 # call the animation
 ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
         fargs=(slider,pusher,),
-        frames=N,
+        frames=N_MPC,
         interval=T,
         blit=True, repeat=False)
 ## to save animation, uncomment the line below:

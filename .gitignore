@@ -2,3 +2,7 @@
 *.mp4
 *.png
 *.pdf
+*.gif
+*.log
+presentation/*
+tikz_schematics/*
