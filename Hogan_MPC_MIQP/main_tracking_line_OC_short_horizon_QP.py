@@ -36,6 +36,9 @@ N_MPC = 200 # time horizon for the MPC controller
 ## Computing Problem constants
 #  -------------------------------------------------------------------
 N = T*freq # total number of iterations
+N_x = 4
+N_u = 3
+N_var = (N_x+N_u)*N_MPC
 h = 1./freq # time interval of each iteration
 A = a**2 # area of the slider in meter square
 f_max = miu_g*m*g # limit force in Newton
@@ -52,12 +55,12 @@ m_max = miu_g*m*g*int_A/A # limit torque Newton meter
 # x[1] - y slider CoM position in the global frame
 # x[2] - slider orientation in the global frame
 # x[3] - angle of pusher relative to slider
-x = cs.SX.sym('x', 4)
+x = cs.SX.sym('x', N_x)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider
-u = cs.SX.sym('u', 3)
+u = cs.SX.sym('u', N_u)
 #  -------------------------------------------------------------------
 
 ## Build Motion Model
@@ -93,13 +96,13 @@ B_func = cs.Function('B', [x,u], [B])
 ## Generate Nominal Trajectory (line)
 #  -------------------------------------------------------------------
 # constant input and initial state
-u_const = cs.SX(3,1); u_const[0] = 0.05
+u_const = cs.SX(N_u,1); u_const[0] = 0.05
 #  -------------------------------------------------------------------
 t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
 dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
 F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
 X_nom = F(x0=[0, 0, 0, 0])['xf']
-U_nom = cs.repmat(u_const, 1, N-1)
+U_nom = cs.repmat(u_const, 1, N)
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
@@ -107,7 +110,7 @@ U_nom = cs.repmat(u_const, 1, N-1)
 # Set nominal trajectory to numerical values
 #X_nom = np.array(X_nom[:,0:N_MPC])
 X_nom = X_nom[:,0:N_MPC]
-U_nom = np.array(cs.DM(U_nom[:,0:N_MPC-1]))
+U_nom = np.array(cs.DM(U_nom[:,0:N_MPC]))
 ## ---- Input variables ---
 X_bar = cs.SX.sym('x_bar', 4, N_MPC)
 U_bar = cs.SX.sym('u_bar', 3, N_MPC)
@@ -118,23 +121,27 @@ Rcost = cs.diag(cs.SX([1,1,0.0]))
 Cost = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
 for i in range(N_MPC-1):
     Cost += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
-## ---- Set optimization variables ----
+## ---- Define optimization variables ----
 class OptVars():
-    x = None
-    g = None
-    p = None
+    x = None # optimization independent variables
+    g = None # optimization equality constraints
+    p = None # optimization parameters
 opt = OptVars()
-N_var = (4+3)*N_MPC
-opt.x = cs.reshape(cs.vertcat(X_bar,U_bar),1,N_var)[0:(N_var-3)]
+## ---- Set optimization variables ----
+opt.x = cs.reshape(cs.vertcat(X_bar,U_bar),1,N_var)[0:(N_var-N_u)]
+## ---- Define optimization arguments ----
+class OptArgs():
+    x0 = None # initial guess for optimization independent varibles
+args = OptArgs()
+## ---- Set optimization arguments ----
+args.x0 = cs.reshape(cs.vertcat(X_nom,U_nom),1,N_var)[0:(N_var-N_u)]
 ## ---- Initialize variables for optimization problem ---
 lbw = []
 ubw = []
-w0=[]
 g = []
 lbg = []
 ubg = []
 ## ---- Initial Conditions ----
-xf = np.transpose(np.array(X_nom[:,-1].T)[0])
 g += [X_bar[:,0]+X_nom[:,0]-P]
 lbg += [0, 0, 0, 0]
 ubg += [0, 0, 0, 0]
@@ -155,32 +162,23 @@ for i in range(N_MPC-1):
     ubg += [cs.inf]
 for i in range(N_MPC-1):
     ## ---- Add States to optimization variables ---
-    #opt.x += [X_bar[:,i]]
     lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
     ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-    w0.extend(X_nom[:,i].elements())
     ## ---- Add Actions to optimization variables ---
     # actions
-    #opt.x += [U_bar[:,i]]
     # normal force
     lbw += [-U_nom[0,i]]
     ubw += [cs.inf]
-    w0.extend([0.0])
     # tangential force
     lbw += [-cs.inf]
     ubw += [cs.inf]
-    w0.extend([0.0])
     # relative sliding velocity
     lbw += [U_nom[2,i]]
     ubw += [U_nom[2,i]]
-    w0.extend([U_nom[2,i]])
 ## ---- Add last States to optimization variables ---
-#opt.x += [X_bar[:,-1]]
 lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
 ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-w0.extend(X_nom[:,-1].elements())
 ## ---- Create solver ----
-#prob = {'f': Cost, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*g), 'p': P}
 prob = {'f': Cost, 'x': opt.x, 'g': cs.vertcat(*g), 'p': P}
 #solver = cs.nlpsol('solver', 'ipopt', prob)
 #solver = cs.nlpsol('solver', 'snopt', prob)
@@ -189,7 +187,7 @@ solver = cs.qpsol('solver', 'gurobi', prob)
 ## ---- Set the appropriate parameters ----
 x0_i = [-0.01, 0.03, 30*(np.pi/180.), 0]
 ## ---- Solve optimization problem ----
-sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=x0_i)
+sol = solver(x0=args.x0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=x0_i)
 w_opt = sol['x']
 ## ---- Compute actual trajectory and controls ----
 X_bar_opt = cs.vertcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7])
@@ -197,7 +195,7 @@ U_bar_opt = cs.vertcat(w_opt[4::7],w_opt[5::7],w_opt[6::7])
 X_bar_opt = np.array(X_bar_opt)
 U_bar_opt = np.array(U_bar_opt)
 X_opt = X_bar_opt + X_nom
-U_opt = U_bar_opt + U_nom
+U_opt = U_bar_opt + U_nom[:,0:N_MPC-1]
 #sys.exit(1)
 #  -------------------------------------------------------------------
 
