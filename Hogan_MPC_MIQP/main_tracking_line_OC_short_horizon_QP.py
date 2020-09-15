@@ -94,12 +94,11 @@ B_func = cs.Function('B', [x,u], [B])
 #  -------------------------------------------------------------------
 # constant input and initial state
 u_const = cs.SX(3,1); u_const[0] = 0.05
-x0 = [0, 0, 0, 0]
 #  -------------------------------------------------------------------
 t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
 dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
 F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
-X_nom = F(x0=x0)['xf']
+X_nom = F(x0=[0, 0, 0, 0])['xf']
 U_nom = cs.repmat(u_const, 1, N-1)
 #  -------------------------------------------------------------------
 
@@ -111,7 +110,7 @@ X_nom = X_nom[:,0:N_MPC]
 U_nom = np.array(cs.DM(U_nom[:,0:N_MPC-1]))
 ## ---- Input variables ---
 X_bar = cs.SX.sym('x_bar', 4, N_MPC)
-U_bar = cs.SX.sym('u_bar', 3, N_MPC-1)
+U_bar = cs.SX.sym('u_bar', 3, N_MPC)
 P = cs.SX.sym('p', 4)
 ## ---- Optimization objective ----------
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
@@ -119,8 +118,15 @@ Rcost = cs.diag(cs.SX([1,1,0.0]))
 Cost = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
 for i in range(N_MPC-1):
     Cost += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
+## ---- Set optimization variables ----
+class OptVars():
+    x = None
+    g = None
+    p = None
+opt = OptVars()
+N_var = (4+3)*N_MPC
+opt.x = cs.reshape(cs.vertcat(X_bar,U_bar),1,N_var)[0:(N_var-3)]
 ## ---- Initialize variables for optimization problem ---
-w=[]
 lbw = []
 ubw = []
 w0=[]
@@ -149,36 +155,33 @@ for i in range(N_MPC-1):
     ubg += [cs.inf]
 for i in range(N_MPC-1):
     ## ---- Add States to optimization variables ---
-    w += [X_bar[:,i]]
+    #opt.x += [X_bar[:,i]]
     lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
     ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
     w0.extend(X_nom[:,i].elements())
     ## ---- Add Actions to optimization variables ---
     # actions
-    w += [U_bar[:,i]]
+    #opt.x += [U_bar[:,i]]
     # normal force
     lbw += [-U_nom[0,i]]
     ubw += [cs.inf]
-    #w0 += [0]
     w0.extend([0.0])
     # tangential force
     lbw += [-cs.inf]
     ubw += [cs.inf]
-    #w0 += [0]
     w0.extend([0.0])
     # relative sliding velocity
     lbw += [U_nom[2,i]]
     ubw += [U_nom[2,i]]
-    #w0 += [U_nom[2,i]]
     w0.extend([U_nom[2,i]])
 ## ---- Add last States to optimization variables ---
-w += [X_bar[:,-1]]
+#opt.x += [X_bar[:,-1]]
 lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
 ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-#w0 += [X_nom[:,-1]]
 w0.extend(X_nom[:,-1].elements())
 ## ---- Create solver ----
-prob = {'f': Cost, 'x': cs.vertcat(*w), 'g': cs.vertcat(*g), 'p': P}
+#prob = {'f': Cost, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*g), 'p': P}
+prob = {'f': Cost, 'x': opt.x, 'g': cs.vertcat(*g), 'p': P}
 #solver = cs.nlpsol('solver', 'ipopt', prob)
 #solver = cs.nlpsol('solver', 'snopt', prob)
 #solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
@@ -189,8 +192,8 @@ x0_i = [-0.01, 0.03, 30*(np.pi/180.), 0]
 sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=x0_i)
 w_opt = sol['x']
 ## ---- Compute actual trajectory and controls ----
-X_bar_opt = cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7]).T
-U_bar_opt = cs.horzcat(w_opt[4::7],w_opt[5::7],w_opt[6::7]).T
+X_bar_opt = cs.vertcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7])
+U_bar_opt = cs.vertcat(w_opt[4::7],w_opt[5::7],w_opt[6::7])
 X_bar_opt = np.array(X_bar_opt)
 U_bar_opt = np.array(U_bar_opt)
 X_opt = X_bar_opt + X_nom
