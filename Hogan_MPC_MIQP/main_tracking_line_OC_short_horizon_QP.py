@@ -31,7 +31,7 @@ miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
-N_MPC = 100 # time horizon for the MPC controller
+N_MPC = 200 # time horizon for the MPC controller
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -106,11 +106,13 @@ U_nom = cs.repmat(u_const, 1, N-1)
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 # Set nominal trajectory to numerical values
-X_nom = np.array(X_nom[:,0:N_MPC])
+#X_nom = np.array(X_nom[:,0:N_MPC])
+X_nom = X_nom[:,0:N_MPC]
 U_nom = np.array(cs.DM(U_nom[:,0:N_MPC-1]))
 ## ---- Input variables ---
 X_bar = cs.SX.sym('x_bar', 4, N_MPC)
 U_bar = cs.SX.sym('u_bar', 3, N_MPC-1)
+P = cs.SX.sym('p', 4)
 ## ---- Optimization objective ----------
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
@@ -126,10 +128,8 @@ g = []
 lbg = []
 ubg = []
 ## ---- Initial Conditions ----
-x0 = [-0.01, 0.03, 30*(np.pi/180.), 0]
 xf = np.transpose(np.array(X_nom[:,-1].T)[0])
-X0 = np.transpose(np.linspace(x0,xf,N_MPC))
-g += [X_bar[:,0]+X_nom[:,0]-x0]
+g += [X_bar[:,0]+X_nom[:,0]-P]
 lbg += [0, 0, 0, 0]
 ubg += [0, 0, 0, 0]
 for i in range(N_MPC-1):
@@ -152,35 +152,41 @@ for i in range(N_MPC-1):
     w += [X_bar[:,i]]
     lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
     ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-    w0 += [X0[:,i]]
+    w0.extend(X_nom[:,i].elements())
     ## ---- Add Actions to optimization variables ---
     # actions
     w += [U_bar[:,i]]
     # normal force
     lbw += [-U_nom[0,i]]
     ubw += [cs.inf]
-    w0 += [0]
+    #w0 += [0]
+    w0.extend([0.0])
     # tangential force
     lbw += [-cs.inf]
     ubw += [cs.inf]
-    w0 += [0]
+    #w0 += [0]
+    w0.extend([0.0])
     # relative sliding velocity
     lbw += [U_nom[2,i]]
     ubw += [U_nom[2,i]]
-    w0 += [U_nom[2,i]]
+    #w0 += [U_nom[2,i]]
+    w0.extend([U_nom[2,i]])
 ## ---- Add last States to optimization variables ---
 w += [X_bar[:,-1]]
 lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
 ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-w0 += [X0[:,-1]]
+#w0 += [X_nom[:,-1]]
+w0.extend(X_nom[:,-1].elements())
 ## ---- Create solver ----
-prob = {'f': Cost, 'x': cs.vertcat(*w), 'g': cs.vertcat(*g)}
+prob = {'f': Cost, 'x': cs.vertcat(*w), 'g': cs.vertcat(*g), 'p': P}
 #solver = cs.nlpsol('solver', 'ipopt', prob)
 #solver = cs.nlpsol('solver', 'snopt', prob)
 #solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
 solver = cs.qpsol('solver', 'gurobi', prob)
+## ---- Set the appropriate parameters ----
+x0_i = [-0.01, 0.03, 30*(np.pi/180.), 0]
 ## ---- Solve optimization problem ----
-sol = solver(x0=cs.vertcat(*w0), lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
+sol = solver(x0=w0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=x0_i)
 w_opt = sol['x']
 ## ---- Compute actual trajectory and controls ----
 X_bar_opt = cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7]).T
@@ -193,6 +199,9 @@ U_opt = U_bar_opt + U_nom
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
+#  -------------------------------------------------------------------
+X_nom = np.array(X_nom)
+X_opt = np.array(X_opt)
 #  -------------------------------------------------------------------
 fig = plt.figure(constrained_layout=True)
 spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
