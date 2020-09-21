@@ -32,6 +32,8 @@ T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
 N_MPC = 200 # time horizon for the MPC controller
+x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
+u_init_val = [0.0, 0.0, 0.0]
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -101,20 +103,25 @@ u_const = cs.SX(N_u,1); u_const[0] = 0.05
 t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
 dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
 F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
-X_nom = F(x0=[0, 0, 0, 0])['xf']
-U_nom = cs.repmat(u_const, 1, N)
+X_nom_val = F(x0=[0, 0, 0, 0])['xf']
+U_nom_val = cs.repmat(u_const, 1, N)
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 # Set nominal trajectory to numerical values
-#X_nom = np.array(X_nom[:,0:N_MPC])
-X_nom = X_nom[:,0:N_MPC]
-U_nom = np.array(cs.DM(U_nom[:,0:N_MPC]))
+#X_nom_val = np.array(X_nom_val[:,0:N_MPC])
+X_nom_val = X_nom_val[:,0:N_MPC]
+U_nom_val = np.array(cs.DM(U_nom_val[:,0:N_MPC]))
 ## ---- Input variables ---
-X_bar = cs.SX.sym('x_bar', 4, N_MPC)
-U_bar = cs.SX.sym('u_bar', 3, N_MPC)
-P = cs.SX.sym('p', 4)
+X_bar = cs.SX.sym('x_bar', N_x, N_MPC)
+U_bar = cs.SX.sym('u_bar', N_u, N_MPC-1)
+## ---- Nominal state and action variables ----
+X_nom = cs.SX.sym('x_nom', N_x, N_MPC)
+U_nom = cs.SX.sym('u_nom', N_u, N_MPC-1)
+## ---- Initial state and action variables ----
+x_init = cs.SX.sym('x0', N_x)
+u_init = cs.SX.sym('u0', N_u)
 ## ---- Optimization objective ----------
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
@@ -128,80 +135,111 @@ class OptVars():
     p = None # optimization parameters
 opt = OptVars()
 ## ---- Set optimization variables ----
-opt.x = cs.reshape(cs.vertcat(X_bar,U_bar),1,N_var)[0:(N_var-N_u)]
+opt.x = []
+for i in range(N_MPC-1):
+    opt.x.extend(X_bar[:,i].elements())
+    opt.x.extend(U_bar[:,i].elements())
+opt.x.extend(X_bar[:,-1].elements())
+opt.x = cs.vertcat(*opt.x)
+## ---- Set equality constraints ----
+opt.g = []
+## Initial Conditions
+opt.g += [X_bar[:,0]+X_nom[:,0]-x_init]
+for i in range(N_MPC-1):
+    ## Dynamic constraints
+    Ai = A_func(X_nom[:,i], U_nom[:,i])
+    Bi = B_func(X_nom[:,i], U_nom[:,i])
+    opt.g += [X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
+    ## Control constraints
+    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i]]
+    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i]]
+## ---- Set optimization parameters ----
+opt.p = []
+opt.p.extend(x_init.elements())
+opt.p.extend(u_init.elements())
+for i in range(N_MPC-1):
+    opt.p.extend(X_nom[:,i].elements())
+    opt.p.extend(U_nom[:,i].elements())
+opt.p.extend(X_nom[:,-1].elements())
+opt.p = cs.vertcat(*opt.p)
+## ---- Create solver ----
+prob = {'f': Cost, 'x': opt.x, 'g': cs.vertcat(*opt.g), 'p': opt.p}
+solver = cs.nlpsol('solver', 'ipopt', prob)
+#solver = cs.nlpsol('solver', 'snopt', prob)
+#solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
+#solver = cs.qpsol('solver', 'gurobi', prob)
 ## ---- Define optimization arguments ----
 class OptArgs():
     x0 = None # initial guess for optimization independent varibles
+    p = None # parameters
+    lbg = None # lower bound for for constraint g
+    ubg = None # upper bound for the constraint g
+    lbx = None # lower bound for optimization variables
+    ubx = None # upper bound for optimization variables
 args = OptArgs()
 ## ---- Set optimization arguments ----
-args.x0 = cs.reshape(cs.vertcat(X_nom,U_nom),1,N_var)[0:(N_var-N_u)]
+args.x0 = []
+for i in range(N_MPC-1):
+    args.x0.extend(X_nom_val[:,i].elements())
+    args.x0.extend(U_nom_val[:,i])
+args.x0.extend(X_nom_val[:,-1].elements())
 ## ---- Initialize variables for optimization problem ---
-lbw = []
-ubw = []
-g = []
-lbg = []
-ubg = []
-## ---- Initial Conditions ----
-g += [X_bar[:,0]+X_nom[:,0]-P]
-lbg += [0, 0, 0, 0]
-ubg += [0, 0, 0, 0]
+args.lbg = []
+args.ubg = []
+args.lbx = []
+args.ubx = []
+## Initial Conditions
+args.lbg += [0, 0, 0, 0]
+args.ubg += [0, 0, 0, 0]
 for i in range(N_MPC-1):
     ## ---- Dynamic constraints ----
-    Ai = A_func(X_nom[:,i], U_nom[:,i])
-    Bi = B_func(X_nom[:,i], U_nom[:,i])
-    g += [X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
-    lbg += [0, 0, 0, 0]
-    ubg += [0, 0, 0, 0]
-for i in range(N_MPC-1):
+    args.lbg += [0, 0, 0, 0]
+    args.ubg += [0, 0, 0, 0]
     ## ---- Control constraints ----
-    g += [miu_p*U_bar[0,i]+U_bar[1,i]]
-    lbg += [-(miu_p*U_nom[0,i]+U_nom[1,i])]
-    ubg += [cs.inf]
-    g += [miu_p*U_bar[0,i]-U_bar[1,i]]
-    lbg += [-(miu_p*U_nom[0,i]-U_nom[1,i])]
-    ubg += [cs.inf]
-for i in range(N_MPC-1):
+    args.lbg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
+    args.ubg += [cs.inf]
+    args.lbg += [-(miu_p*U_nom_val[0,i]-U_nom_val[1,i])]
+    args.ubg += [cs.inf]
     ## ---- Add States to optimization variables ---
-    lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
-    ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
+    args.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
+    args.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
     ## ---- Add Actions to optimization variables ---
-    # actions
-    # normal force
-    lbw += [-U_nom[0,i]]
-    ubw += [cs.inf]
-    # tangential force
-    lbw += [-cs.inf]
-    ubw += [cs.inf]
-    # relative sliding velocity
-    lbw += [U_nom[2,i]]
-    ubw += [U_nom[2,i]]
+    # normal vel
+    args.lbx += [-U_nom_val[0,i]]
+    args.ubx += [cs.inf]
+    # tangential vel
+    args.lbx += [-cs.inf]
+    args.ubx += [cs.inf]
+    # relative sliding vel
+    args.lbx += [U_nom_val[2,i]]
+    args.ubx += [U_nom_val[2,i]]
 ## ---- Add last States to optimization variables ---
-lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
-ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-## ---- Create solver ----
-prob = {'f': Cost, 'x': opt.x, 'g': cs.vertcat(*g), 'p': P}
-#solver = cs.nlpsol('solver', 'ipopt', prob)
-#solver = cs.nlpsol('solver', 'snopt', prob)
-#solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
-solver = cs.qpsol('solver', 'gurobi', prob)
+args.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
+args.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
 ## ---- Set the appropriate parameters ----
-x0_i = [-0.01, 0.03, 30*(np.pi/180.), 0]
+args.p = []
+args.p.extend(x_init_val)
+args.p.extend(u_init_val)
+for i in range(N_MPC-1):
+    args.p.extend(X_nom_val[:,i].elements())
+    args.p.extend(U_nom_val[:,i])
+args.p.extend(X_nom_val[:,-1].elements())
 ## ---- Solve optimization problem ----
-sol = solver(x0=args.x0, lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg, p=x0_i)
+sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
 w_opt = sol['x']
 ## ---- Compute actual trajectory and controls ----
-X_bar_opt = cs.vertcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7])
-U_bar_opt = cs.vertcat(w_opt[4::7],w_opt[5::7],w_opt[6::7])
+X_bar_opt = cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7]).T
+U_bar_opt = cs.horzcat(w_opt[4::7],w_opt[5::7],w_opt[6::7]).T
 X_bar_opt = np.array(X_bar_opt)
 U_bar_opt = np.array(U_bar_opt)
-X_opt = X_bar_opt + X_nom
-U_opt = U_bar_opt + U_nom[:,0:N_MPC-1]
+X_opt = X_bar_opt + X_nom_val
+U_opt = U_bar_opt + U_nom_val[:,0:N_MPC-1]
 #sys.exit(1)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-X_nom = np.array(X_nom)
+X_nom_val = np.array(X_nom_val)
 X_opt = np.array(X_opt)
 #  -------------------------------------------------------------------
 fig = plt.figure(constrained_layout=True)
@@ -211,7 +249,7 @@ ax_y = fig.add_subplot(spec[0, 1])
 ax_ang = fig.add_subplot(spec[1, 0])
 ax_fn = fig.add_subplot(spec[1, 1])
 #  -------------------------------------------------------------------
-ax_x.plot(ts[0:N_MPC], X_nom[0,:], color='b', label='nom')
+ax_x.plot(ts[0:N_MPC], X_nom_val[0,:], color='b', label='nom')
 ax_x.plot(ts[0:N_MPC], X_opt[0,:], color='r', label='opt')
 handles, labels = ax_x.get_legend_handles_labels()
 ax_x.legend(handles, labels)
@@ -219,7 +257,7 @@ ax_x.set(xlabel='time [s]', ylabel='position [m]',
                title='Slider CoM x position')
 ax_x.grid()
 #  -------------------------------------------------------------------
-ax_y.plot(ts[0:N_MPC], X_nom[1,:], color='b', label='nom')
+ax_y.plot(ts[0:N_MPC], X_nom_val[1,:], color='b', label='nom')
 ax_y.plot(ts[0:N_MPC], X_opt[1,:], color='r', label='opt')
 handles, labels = ax_y.get_legend_handles_labels()
 ax_y.legend(handles, labels)
@@ -256,8 +294,8 @@ ax_ani = fig_ani.add_subplot(111, aspect='equal', autoscale_on=False, \
         xlim=(-0.1,0.6), ylim=(-0.1,0.1) \
 )
 # draw nominal trajectory
-ax_ani.plot(X_nom[0,:], X_nom[1,:], color='red', linewidth=2.0, linestyle='dashed')
-ax_ani.plot(X_nom[0,0], X_nom[1,0], X_nom[0,-1], X_nom[1,-1], marker='o', color='red')
+ax_ani.plot(X_nom_val[0,:], X_nom_val[1,:], color='red', linewidth=2.0, linestyle='dashed')
+ax_ani.plot(X_nom_val[0,0], X_nom_val[1,0], X_nom_val[0,-1], X_nom_val[1,-1], marker='o', color='red')
 ax_ani.grid();
 #ax_ani.set_axisbelow(True)
 ax_ani.set_aspect('equal', 'box')
