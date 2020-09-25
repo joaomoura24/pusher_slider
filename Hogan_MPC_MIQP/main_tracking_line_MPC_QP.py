@@ -31,7 +31,7 @@ miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
-N_MPC = 498 # time horizon for the MPC controller
+N_MPC = 499 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 #  -------------------------------------------------------------------
@@ -222,29 +222,29 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 ## Set arguments and solve
 #  -------------------------------------------------------------------
 args = OptArgs()
-idx = 0
 for idx in range(N-N_MPC):
     # Indexing
     idx_x_i = idx*(N_x+N_u)
     idx_x_f = (idx+N_MPC-1)*(N_x+N_u)+N_x
+    idx_g_i = idx*6
+    idx_g_f = (idx+N_MPC-1)*6
     # warm start
-    args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
-    # optimization bounderies
+    if idx==0:
+        args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
+    else:
+        args.x0 = x_opt[6:-1].elements()
+        args.x0.extend(ARGS_NOM.p[(idx_x_f-(N_u+N_x)):idx_x_f])
+    # setting optimization bounderies from nominal traj
     args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
     args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
-    ## parameters
+    ## setting parameters
     args.p = []
     args.p.extend(x_init_val)
     args.p.extend(u_init_val)
     args.p.extend(ARGS_NOM.p[idx_x_i:idx_x_f])
-    ## constraints bounderies
-    idx_g_i = idx*6
-    idx_g_f = (idx+N_MPC-1)*6
-    args.lbg = []
-    args.ubg = []
     # initial state constraint
-    args.lbg += [0, 0, 0, 0]
-    args.ubg += [0, 0, 0, 0]
+    args.lbg = [0, 0, 0, 0]
+    args.ubg = [0, 0, 0, 0]
     # dynamics and friction constraints
     args.lbg.extend(ARGS_NOM.lbg[idx_g_i:idx_g_f])
     args.ubg.extend(ARGS_NOM.ubg[idx_g_i:idx_g_f])
@@ -258,7 +258,9 @@ for idx in range(N-N_MPC):
     U_bar_opt = np.array(U_bar_opt)
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
-    print(idx)
+    ## ---- Update initial conditions and warm start ----
+    x_init_val = X_opt[:,1].elements()
+    u_init_val = U_opt[:,0]
 sys.exit(1)
 #  -------------------------------------------------------------------
 
