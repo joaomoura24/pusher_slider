@@ -31,13 +31,14 @@ miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
-N_MPC = 499 # time horizon for the MPC controller
+N_MPC = 498 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
 N = T*freq # total number of iterations
+dt = 1.0/freq # sampling time
 N_x = 4
 N_u = 3
 N_var = (N_x+N_u)*N_MPC
@@ -259,8 +260,9 @@ for idx in range(N-N_MPC):
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions and warm start ----
-    x_init_val = X_opt[:,1].elements()
     u_init_val = U_opt[:,0]
+    #x_init_val = X_opt[:,1].elements()
+    x_init_val = (x_init_val + f_func(x_init_val, u_init_val)*dt).elements()
 sys.exit(1)
 #  -------------------------------------------------------------------
 
