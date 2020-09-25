@@ -220,10 +220,18 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 #solver = cs.qpsol('solver', 'gurobi', prob)
 #  -------------------------------------------------------------------
 
+## Initialize variables for plotting
+#  -------------------------------------------------------------------
+Nidx = N-N_MPC
+X_plot = np.empty([N_x, Nidx+1])
+U_plot = np.empty([N_u, Nidx])
+X_plot[:,0] = x_init_val
+#  -------------------------------------------------------------------
+
 ## Set arguments and solve
 #  -------------------------------------------------------------------
 args = OptArgs()
-for idx in range(N-N_MPC):
+for idx in range(Nidx):
     # Indexing
     idx_x_i = idx*(N_x+N_u)
     idx_x_f = (idx+N_MPC-1)*(N_x+N_u)+N_x
@@ -263,13 +271,16 @@ for idx in range(N-N_MPC):
     u_init_val = U_opt[:,0]
     #x_init_val = X_opt[:,1].elements()
     x_init_val = (x_init_val + f_func(x_init_val, u_init_val)*dt).elements()
-sys.exit(1)
+    ## ---- Store values for plotting ----
+    X_plot[:,idx+1] = x_init_val
+    U_plot[:,idx] = u_init_val
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
+ts_X = ts[0:Nidx+1]
+ts_U = ts[0:Nidx]
 X_nom_val = np.array(X_nom_val)
-X_opt = np.array(X_opt)
 #  -------------------------------------------------------------------
 fig = plt.figure(constrained_layout=True)
 spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
@@ -279,7 +290,7 @@ ax_ang = fig.add_subplot(spec[1, 0])
 ax_fn = fig.add_subplot(spec[1, 1])
 #  -------------------------------------------------------------------
 ax_x.plot(ts, X_nom_val[0,:], color='b', label='nom')
-ax_x.plot(ts[0:N_MPC], X_opt[0,:], color='r', label='opt')
+ax_x.plot(ts_X, X_plot[0,:], color='r', label='opt')
 handles, labels = ax_x.get_legend_handles_labels()
 ax_x.legend(handles, labels)
 ax_x.set(xlabel='time [s]', ylabel='position [m]',
@@ -287,32 +298,33 @@ ax_x.set(xlabel='time [s]', ylabel='position [m]',
 ax_x.grid()
 #  -------------------------------------------------------------------
 ax_y.plot(ts, X_nom_val[1,:], color='b', label='nom')
-ax_y.plot(ts[0:N_MPC], X_opt[1,:], color='r', label='opt')
+ax_y.plot(ts_X, X_plot[1,:], color='r', label='opt')
 handles, labels = ax_y.get_legend_handles_labels()
 ax_y.legend(handles, labels)
 ax_y.set(xlabel='time [s]', ylabel='position [m]',
                title='Slider CoM y position')
 ax_y.grid()
 #  -------------------------------------------------------------------
-ax_ang.plot(ts[0:N_MPC], X_opt[2,:]*(180/np.pi), color='b', label='slider')
-ax_ang.plot(ts[0:N_MPC], X_opt[3,:]*(180/np.pi), color='r', label='pusher')
+ax_ang.plot(ts_X, X_plot[2,:]*(180/np.pi), color='b', label='slider')
+ax_ang.plot(ts_X, X_plot[3,:]*(180/np.pi), color='r', label='pusher')
 handles, labels = ax_ang.get_legend_handles_labels()
 ax_ang.legend(handles, labels)
 ax_ang.set(xlabel='time [s]', ylabel='angles [degrees]',
                title='Angles of pusher and Slider')
 ax_ang.grid()
 #  -------------------------------------------------------------------
-ax_fn.plot(ts[0:N_MPC-1], U_opt[0,:], color='b', label='norm')
-ax_fn.plot(ts[0:N_MPC-1], U_opt[1,:], color='g', label='tan')
+ax_fn.plot(ts_U, U_plot[0,:], color='b', label='norm')
+ax_fn.plot(ts_U, U_plot[1,:], color='g', label='tan')
 handles, labels = ax_fn.get_legend_handles_labels()
 ax_fn.legend(handles, labels)
 ax_fn.set(xlabel='time [s]', ylabel='force [N]',
                title='Pusher vel. on slider')
 ax_fn.grid()
 #  -------------------------------------------------------------------
-plt.show(block=False)
-#sys.exit(1)
+#plt.show(block=False)
+plt.show()
 #  -------------------------------------------------------------------
+sys.exit(1)
 
 # Animation of Nominal Trajectory
 #  -------------------------------------------------------------------
