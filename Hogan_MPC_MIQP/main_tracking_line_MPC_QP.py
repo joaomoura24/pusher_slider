@@ -321,10 +321,9 @@ ax_fn.set(xlabel='time [s]', ylabel='force [N]',
                title='Pusher vel. on slider')
 ax_fn.grid()
 #  -------------------------------------------------------------------
-#plt.show(block=False)
-plt.show()
+plt.show(block=False)
 #  -------------------------------------------------------------------
-sys.exit(1)
+#sys.exit(1)
 
 # Animation of Nominal Trajectory
 #  -------------------------------------------------------------------
@@ -349,7 +348,7 @@ def init():
     return []
     #return slider,
 def animate(i, slider, pusher):
-    xi = X_opt[:,i]
+    xi = X_plot[:,i]
     # distance between centre of square reference corner
     di=np.array(cs.mtimes(R_func(xi),[-a/2, -a/2, 0]).T)[0]
     # square reference corner
@@ -368,7 +367,7 @@ def animate(i, slider, pusher):
 # call the animation
 ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
         fargs=(slider,pusher,),
-        frames=N_MPC,
+        frames=Nidx,
         interval=T,
         blit=True, repeat=False)
 ## to save animation, uncomment the line below:
