@@ -32,6 +32,7 @@ T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
 N_MPC = 498 # time horizon for the MPC controller
+#N_MPC = 100 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 #  -------------------------------------------------------------------
@@ -226,10 +227,13 @@ Nidx = N-N_MPC
 X_plot = np.empty([N_x, Nidx+1])
 U_plot = np.empty([N_u, Nidx])
 X_plot[:,0] = x_init_val
+X_future = np.empty([N_x, N_MPC, Nidx])
 #  -------------------------------------------------------------------
 
 ## Set arguments and solve
 #  -------------------------------------------------------------------
+x_init = x_init_val
+u_init = u_init_val
 args = OptArgs()
 for idx in range(Nidx):
     # Indexing
@@ -248,8 +252,8 @@ for idx in range(Nidx):
     args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
     ## setting parameters
     args.p = []
-    args.p.extend(x_init_val)
-    args.p.extend(u_init_val)
+    args.p.extend(x_init)
+    args.p.extend(u_init)
     args.p.extend(ARGS_NOM.p[idx_x_i:idx_x_f])
     # initial state constraint
     args.lbg = [0, 0, 0, 0]
@@ -261,25 +265,27 @@ for idx in range(Nidx):
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     x_opt = sol['x']
     ## ---- Compute actual trajectory and controls ----
-    X_bar_opt = np.array(cs.horzcat(x_opt[0::7],x_opt[1::7],x_opt[2::7],x_opt[3::7]).T)
-    U_bar_opt = np.array(cs.horzcat(x_opt[4::7],x_opt[5::7],x_opt[6::7]).T)
-    X_bar_opt = np.array(X_bar_opt)
-    U_bar_opt = np.array(U_bar_opt)
+    X_bar_opt = cs.horzcat(x_opt[0::7],x_opt[1::7],x_opt[2::7],x_opt[3::7]).T
+    U_bar_opt = cs.horzcat(x_opt[4::7],x_opt[5::7],x_opt[6::7]).T
+    X_bar_opt = X_bar_opt
+    U_bar_opt = U_bar_opt
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions and warm start ----
-    u_init_val = U_opt[:,0]
-    #x_init_val = X_opt[:,1].elements()
-    x_init_val = (x_init_val + f_func(x_init_val, u_init_val)*dt).elements()
+    u_init = U_opt[:,0].elements()
+    #x_init = X_opt[:,1].elements()
+    x_init = (x_init + f_func(x_init, u_init)*dt).elements()
     ## ---- Store values for plotting ----
-    X_plot[:,idx+1] = x_init_val
-    U_plot[:,idx] = u_init_val
+    X_plot[:,idx+1] = x_init
+    U_plot[:,idx] = u_init
+    X_future[:,:,idx] = np.array(X_opt)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
 ts_X = ts[0:Nidx+1]
 ts_U = ts[0:Nidx]
+ts_opt = ts[0:N_MPC]
 X_nom_val = np.array(X_nom_val)
 #  -------------------------------------------------------------------
 fig = plt.figure(constrained_layout=True)
@@ -323,7 +329,6 @@ ax_fn.grid()
 #  -------------------------------------------------------------------
 plt.show(block=False)
 #  -------------------------------------------------------------------
-#sys.exit(1)
 
 # Animation of Nominal Trajectory
 #  -------------------------------------------------------------------
@@ -337,11 +342,15 @@ ax_ani = fig_ani.add_subplot(111, aspect='equal', autoscale_on=False, \
 ax_ani.plot(X_nom_val[0,:], X_nom_val[1,:], color='red', linewidth=2.0, linestyle='dashed')
 ax_ani.plot(X_nom_val[0,0], X_nom_val[1,0], X_nom_val[0,-1], X_nom_val[1,-1], marker='o', color='red')
 ax_ani.grid();
-#ax_ani.set_axisbelow(True)
 ax_ani.set_aspect('equal', 'box')
 ax_ani.set_title('Pusher-Slider Motion Animation')
 slider = patches.Rectangle([0,0], a, a)
 pusher = patches.Circle([0,0], radius=r_pusher, color='black')
+# Plot centre of the slider
+#path_future, = ax_ani.plot(X_future[0,:,0], X_future[1,:,0], color='orange', linestyle='dashed')
+path_future, = ax_ani.plot(x_init_val[0], x_init_val[1], color='orange', linestyle='dashed')
+path_past, = ax_ani.plot(x_init_val[0], x_init_val[1], color='orange')
+path_past.set_linewidth(2)
 def init():
     ax_ani.add_patch(slider)
     ax_ani.add_patch(pusher)
@@ -357,8 +366,10 @@ def animate(i, slider, pusher):
     trans_ax = ax_ani.transData
     coords = trans_ax.transform(ci[0:2])
     trans_i = transforms.Affine2D().rotate_around(coords[0], coords[1], xi[2])
+    # Plot centre of the slider
+    path_future.set_data(X_future[0,:,i], X_future[1,:,i])
+    path_past.set_data(X_plot[0,0:i], X_plot[1,0:i])
     # Set changes
-    #slider.set_transform(trans_ax+trans_i)
     slider.set_transform(trans_ax+trans_i)
     slider.set_xy([ci[0], ci[1]])
     pusher.set_center(np.array(p_pusher_func(xi)))
