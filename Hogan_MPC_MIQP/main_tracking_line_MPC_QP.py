@@ -9,6 +9,7 @@
 
 ## Import Libraries
 #  -------------------------------------------------------------------
+import sys
 import numpy as np
 import numpy.matlib as nplib
 from scipy.integrate import dblquad 
@@ -18,7 +19,6 @@ import matplotlib.gridspec as gridspec
 import matplotlib.patches as patches
 import matplotlib.animation as animation
 import matplotlib.transforms as transforms
-import sys
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -28,13 +28,19 @@ a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
 miu_g = 0.35 # coeficient of friction between slider and table
 miu_p = 0.3 # coeficient of friction between pusher and slider
-T = 10 # time of the simulation is seconds
+T = 12 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
-N_MPC = 498 # time horizon for the MPC controller
-#N_MPC = 100 # time horizon for the MPC controller
+N_MPC = 595 # time horizon for the MPC controller
+N_MPC = 40 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
+solver_name = 'ipopt'
+#solver_name = 'snopt'
+#solver_name = 'gurobi'
+#solver_name = 'qpoases'
+opts_dict = {'print_time': 0}
+no_printing = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -213,12 +219,25 @@ for i in range(N_MPC-1):
     opt.p.extend(X_nom[:,i].elements())
     opt.p.extend(U_nom[:,i].elements())
 opt.p.extend(X_nom[:,-1].elements())
+## ---- Set solver options to supress output ----
+if solver_name == 'ipopt':
+    if no_printing: opts_dict['ipopt.print_level'] = 0
+if solver_name == 'snopt':
+    if no_printing: opts_dict['snopt'] = {'Print file': '0', 'Summary file': '0'}
+if solver_name == 'qpoases':
+    if no_printing: opts_dict['printLevel'] = 'none'
+    opts_dict['sparse'] = True
+if solver_name == 'gurobi':
+    if no_printing: opts_dict['gurobi.OutputFlag'] = 0
 ## ---- Create solver ----
 prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
-solver = cs.nlpsol('solver', 'ipopt', prob)
+if (solver_name == 'ipopt') or (solver_name == 'snopt'):
+    solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
+elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
+    solver = cs.qpsol('solver', solver_name, prob, opts_dict)
 #solver = cs.nlpsol('solver', 'snopt', prob)
 #solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
-#solver = cs.qpsol('solver', 'gurobi', prob)
+#solver = cs.qpsol('solver', 'gurobi')
 #  -------------------------------------------------------------------
 
 ## Initialize variables for plotting
@@ -336,7 +355,7 @@ plt.show(block=False)
 fig_ani = plt.figure()
 fig_ani.canvas.set_window_title('Matplotlib Animation')
 ax_ani = fig_ani.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(-0.1,0.6), ylim=(-0.1,0.1) \
+        xlim=(-0.05,0.65), ylim=(-0.15,0.15) \
 )
 # draw nominal trajectory
 ax_ani.plot(X_nom_val[0,:], X_nom_val[1,:], color='red', linewidth=2.0, linestyle='dashed')
@@ -382,7 +401,7 @@ ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
         interval=T,
         blit=True, repeat=False)
 ## to save animation, uncomment the line below:
-#ani.save('sliding_tracking_line_fullTO_QP.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
+#ani.save('cenas.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
 #ani.save('sliding_tracking_line_fullTO_QP.gif', writer='imagemagick', fps=freq)
 #show the animation
 plt.show()
