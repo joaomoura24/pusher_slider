@@ -10,6 +10,7 @@
 ## Import Libraries
 #  -------------------------------------------------------------------
 import sys
+import time
 import numpy as np
 import numpy.matlib as nplib
 from scipy.integrate import dblquad 
@@ -32,7 +33,7 @@ T = 12 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
 N_MPC = 595 # time horizon for the MPC controller
-N_MPC = 40 # time horizon for the MPC controller
+N_MPC = 100 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 solver_name = 'ipopt'
@@ -189,7 +190,7 @@ u_init = cs.SX.sym('u0', N_u)
 #  -------------------------------------------------------------------
 opt = OptVars()
 ## ---- Set optimization objective ----------
-Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
+Qcost = cs.diag(cs.SX([10.0,10.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
 opt.f = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
 for i in range(N_MPC-1):
@@ -235,9 +236,6 @@ if (solver_name == 'ipopt') or (solver_name == 'snopt'):
     solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
 elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
     solver = cs.qpsol('solver', solver_name, prob, opts_dict)
-#solver = cs.nlpsol('solver', 'snopt', prob)
-#solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
-#solver = cs.qpsol('solver', 'gurobi')
 #  -------------------------------------------------------------------
 
 ## Initialize variables for plotting
@@ -247,6 +245,7 @@ X_plot = np.empty([N_x, Nidx+1])
 U_plot = np.empty([N_u, Nidx])
 X_plot[:,0] = x_init_val
 X_future = np.empty([N_x, N_MPC, Nidx])
+comp_time = np.empty(Nidx)
 #  -------------------------------------------------------------------
 
 ## Set arguments and solve
@@ -281,8 +280,10 @@ for idx in range(Nidx):
     args.lbg.extend(ARGS_NOM.lbg[idx_g_i:idx_g_f])
     args.ubg.extend(ARGS_NOM.ubg[idx_g_i:idx_g_f])
     ## ---- Solve the optimization ----
+    start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     x_opt = sol['x']
+    comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
     X_bar_opt = cs.horzcat(x_opt[0::7],x_opt[1::7],x_opt[2::7],x_opt[3::7]).T
     U_bar_opt = cs.horzcat(x_opt[4::7],x_opt[5::7],x_opt[6::7]).T
