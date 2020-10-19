@@ -9,17 +9,21 @@
 
 ## Import Libraries
 #  -------------------------------------------------------------------
+import io
+import os
 import sys
 import time
 import numpy as np
 import numpy.matlib as nplib
 from scipy.integrate import dblquad 
 import casadi as cs
+# import casadi
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import matplotlib.patches as patches
 import matplotlib.animation as animation
 import matplotlib.transforms as transforms
+import contextlib
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -33,15 +37,20 @@ T = 12 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
 N_MPC = 595 # time horizon for the MPC controller
-N_MPC = 100 # time horizon for the MPC controller
+#N_MPC = 250 # time horizon for the MPC controller
+N_MPC = 35 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
-solver_name = 'ipopt'
+#solver_name = 'ipopt'
 #solver_name = 'snopt'
-#solver_name = 'gurobi'
+solver_name = 'gurobi'
 #solver_name = 'qpoases'
 opts_dict = {'print_time': 0}
-no_printing = True
+no_printing = False
+code_gen = False
+#  -------------------------------------------------------------------
+## get string name
+prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(code_gen)
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -190,8 +199,10 @@ u_init = cs.SX.sym('u0', N_u)
 #  -------------------------------------------------------------------
 opt = OptVars()
 ## ---- Set optimization objective ----------
-Qcost = cs.diag(cs.SX([10.0,10.0,0.01,0]))
-Rcost = cs.diag(cs.SX([1,1,0.0]))
+#Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
+Qcost = cs.SX(N_x, N_x); Qcost[0,0] = Qcost[1,1] = 3.0; Qcost[2,2] = 0.01;
+#Rcost = cs.diag(cs.SX([1,1,0.0]))
+Rcost = cs.SX(N_u, N_u); Rcost[0,0] = Rcost[1,1] = 1.0;
 opt.f = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
 for i in range(N_MPC-1):
     opt.f += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
@@ -220,11 +231,14 @@ for i in range(N_MPC-1):
     opt.p.extend(X_nom[:,i].elements())
     opt.p.extend(U_nom[:,i].elements())
 opt.p.extend(X_nom[:,-1].elements())
-## ---- Set solver options to supress output ----
+## ---- Set solver options ----
 if solver_name == 'ipopt':
     if no_printing: opts_dict['ipopt.print_level'] = 0
 if solver_name == 'snopt':
-    if no_printing: opts_dict['snopt'] = {'Print file': '0', 'Summary file': '0'}
+    #if no_printing: opts_dict['snopt'] = {'Print file': '0'}
+    if no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
+#print(opts_dict)
+#sys.exit(1)
 if solver_name == 'qpoases':
     if no_printing: opts_dict['printLevel'] = 'none'
     opts_dict['sparse'] = True
@@ -234,8 +248,15 @@ if solver_name == 'gurobi':
 prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
 if (solver_name == 'ipopt') or (solver_name == 'snopt'):
     solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
+    if code_gen:
+        if not os.path.isfile('./' + prog_name + '.so'):
+            solver.generate_dependencies(prog_name + '.c')
+            os.system('gcc -fPIC -shared -O3 ' + prog_name + '.c -o ' + prog_name + '.so')
+        solver = cs.nlpsol('solver', solver_name, prog_name + '.so', opts_dict)
 elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
     solver = cs.qpsol('solver', solver_name, prob, opts_dict)
+## ---- Turn solver into function ----
+opts = dict(main=True)
 #  -------------------------------------------------------------------
 
 ## Initialize variables for plotting
@@ -250,8 +271,8 @@ comp_time = np.empty(Nidx)
 
 ## Set arguments and solve
 #  -------------------------------------------------------------------
-x_init = x_init_val
-u_init = u_init_val
+x0 = x_init_val
+u0 = u_init_val
 args = OptArgs()
 for idx in range(Nidx):
     # Indexing
@@ -270,8 +291,8 @@ for idx in range(Nidx):
     args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
     ## setting parameters
     args.p = []
-    args.p.extend(x_init)
-    args.p.extend(u_init)
+    args.p.extend(x0)
+    args.p.extend(u0)
     args.p.extend(ARGS_NOM.p[idx_x_i:idx_x_f])
     # initial state constraint
     args.lbg = [0, 0, 0, 0]
@@ -281,6 +302,7 @@ for idx in range(Nidx):
     args.ubg.extend(ARGS_NOM.ubg[idx_g_i:idx_g_f])
     ## ---- Solve the optimization ----
     start_time = time.time()
+    #with contextlib.redirect_stdout(None):
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     x_opt = sol['x']
     comp_time[idx] = time.time() - start_time
@@ -292,12 +314,12 @@ for idx in range(Nidx):
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions and warm start ----
-    u_init = U_opt[:,0].elements()
-    #x_init = X_opt[:,1].elements()
-    x_init = (x_init + f_func(x_init, u_init)*dt).elements()
+    u0 = U_opt[:,0].elements()
+    #x0 = X_opt[:,1].elements()
+    x0 = (x0 + f_func(x0, u0)*dt).elements()
     ## ---- Store values for plotting ----
-    X_plot[:,idx+1] = x_init
-    U_plot[:,idx] = u_init
+    X_plot[:,idx+1] = x0
+    U_plot[:,idx] = u0
     X_future[:,:,idx] = np.array(X_opt)
 #  -------------------------------------------------------------------
 
@@ -308,12 +330,13 @@ ts_U = ts[0:Nidx]
 ts_opt = ts[0:N_MPC]
 X_nom_val = np.array(X_nom_val)
 #  -------------------------------------------------------------------
-fig = plt.figure(constrained_layout=True)
-spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
+fig = plt.figure(constrained_layout=True, figsize=(6, 8))
+spec = gridspec.GridSpec(ncols=2, nrows=3, figure=fig)
 ax_x = fig.add_subplot(spec[0, 0])
 ax_y = fig.add_subplot(spec[0, 1])
 ax_ang = fig.add_subplot(spec[1, 0])
 ax_fn = fig.add_subplot(spec[1, 1])
+ax_t = fig.add_subplot(spec[2, :])
 #  -------------------------------------------------------------------
 ax_x.plot(ts, X_nom_val[0,:], color='b', label='nom')
 ax_x.plot(ts_X, X_plot[0,:], color='r', label='opt')
@@ -346,6 +369,11 @@ ax_fn.legend(handles, labels)
 ax_fn.set(xlabel='time [s]', ylabel='force [N]',
                title='Pusher vel. on slider')
 ax_fn.grid()
+#  -------------------------------------------------------------------
+ax_t.plot(ts_U, comp_time)
+ax_y.set(xlabel='time [s]', ylabel='time [s]',
+               title='Computational time')
+ax_t.grid()
 #  -------------------------------------------------------------------
 plt.show(block=False)
 #  -------------------------------------------------------------------
@@ -402,7 +430,7 @@ ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
         interval=T,
         blit=True, repeat=False)
 ## to save animation, uncomment the line below:
-#ani.save('cenas.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
+#ani.save('mpc_TH50.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
 #ani.save('sliding_tracking_line_fullTO_QP.gif', writer='imagemagick', fps=freq)
 #show the animation
 plt.show()
