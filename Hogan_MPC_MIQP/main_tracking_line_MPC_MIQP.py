@@ -28,6 +28,9 @@ import matplotlib.transforms as transforms
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
+N_x = 4 # number of state variables
+N_u = 3 # number of actions variables
+N_g = 7 # number of optimization constraints
 g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
@@ -56,8 +59,6 @@ prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(c
 #  -------------------------------------------------------------------
 N = T*freq # total number of iterations
 dt = 1.0/freq # sampling time
-N_x = 4
-N_u = 3
 N_var = (N_x+N_u)*N_MPC
 h = 1./freq # time interval of each iteration
 A = a**2 # area of the slider in meter square
@@ -155,6 +156,9 @@ for i in range(N-1):
     ## ---- Dynamic constraints ----
     ARGS_NOM.lbg += [0, 0, 0, 0]
     ARGS_NOM.ubg += [0, 0, 0, 0]
+    ## ---- State constraints ----
+    ARGS_NOM.lbg += [-U_nom_val[2,i]]
+    ARGS_NOM.ubg += [-U_nom_val[2,i]]
     ## ---- Control constraints ----
     ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
     ARGS_NOM.ubg += [cs.inf]
@@ -171,8 +175,10 @@ for i in range(N-1):
     ARGS_NOM.lbx += [-cs.inf]
     ARGS_NOM.ubx += [cs.inf]
     # relative sliding vel
-    ARGS_NOM.lbx += [-U_nom_val[2,i]]
-    ARGS_NOM.ubx += [-U_nom_val[2,i]]
+    ## ARGS_NOM.lbx += [-U_nom_val[2,i]]
+    ## ARGS_NOM.ubx += [-U_nom_val[2,i]]
+    ARGS_NOM.lbx += [-cs.inf]
+    ARGS_NOM.ubx += [cs.inf]
     ## ---- Set nominal trajectory as parameters ----
     ARGS_NOM.p.extend(X_nom_val[:,i].elements())
     ARGS_NOM.p.extend(U_nom_val[:,i])
@@ -220,6 +226,8 @@ for i in range(N_MPC-1):
     Ai = A_func(X_nom[:,i], U_nom[:,i])
     Bi = B_func(X_nom[:,i], U_nom[:,i])
     opt.g.extend([X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))])
+    ## State constraints
+    opt.g += [U_bar[2,i]]
     ## Control constraints
     opt.g += [miu_p*U_bar[0,i]+U_bar[1,i]]
     opt.g += [miu_p*U_bar[0,i]-U_bar[1,i]]
@@ -278,8 +286,8 @@ for idx in range(Nidx):
     # Indexing
     idx_x_i = idx*(N_x+N_u)
     idx_x_f = (idx+N_MPC-1)*(N_x+N_u)+N_x
-    idx_g_i = idx*6
-    idx_g_f = (idx+N_MPC-1)*6
+    idx_g_i = idx*N_g
+    idx_g_f = (idx+N_MPC-1)*N_g
     # warm start
     if idx==0:
         args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
