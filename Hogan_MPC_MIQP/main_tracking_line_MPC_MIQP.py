@@ -30,7 +30,7 @@ import matplotlib.transforms as transforms
 #  -------------------------------------------------------------------
 N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
-N_g = 8 # number of optimization constraints
+N_g = 10 # number of optimization constraints
 g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
@@ -42,6 +42,7 @@ r_pusher = 0.005 # radious of the cilindrical pusher in meter
 N_MPC = 595 # time horizon for the MPC controller
 #N_MPC = 250 # time horizon for the MPC controller
 N_MPC = 35 # time horizon for the MPC controller
+bigM = 500 # big M for the Mixed Integer optimization
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 #solver_name = 'ipopt'
@@ -82,7 +83,15 @@ x = cs.SX.sym('x', N_x)
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider
 u = cs.SX.sym('u', N_u)
-#  -------------------------------------------------------------------
+# z - modes
+# z[0] - Sticking mode
+# z[1] - Sliding Left mode
+# z[2] - Sliding Right mode
+z = cs.SX.zeros(3,1)
+z[0] = 1
+Z = cs.repmat(z, 1, N_MPC)
+Z = np.array(cs.DM(Z))
+#  ------------------------------------------------------------------
 
 ## Define structures for optimization variables and optimization arguments
 #  -------------------------------------------------------------------
@@ -162,10 +171,14 @@ for i in range(N-1):
     ARGS_NOM.lbg += [-cs.inf]
     ARGS_NOM.ubg += [-U_nom_val[2,i]]
     ## ---- Control constraints ----
-    ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
-    ARGS_NOM.ubg += [cs.inf]
     ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]-U_nom_val[1,i])]
     ARGS_NOM.ubg += [cs.inf]
+    ARGS_NOM.lbg += [-cs.inf]
+    ARGS_NOM.ubg += [-(miu_p*U_nom_val[0,i]-U_nom_val[1,i])]
+    ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
+    ARGS_NOM.ubg += [cs.inf]
+    ARGS_NOM.lbg += [-cs.inf]
+    ARGS_NOM.ubg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
     ## ---- Add States to optimization variables ---
     ARGS_NOM.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
     ARGS_NOM.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
@@ -177,8 +190,6 @@ for i in range(N-1):
     ARGS_NOM.lbx += [-cs.inf]
     ARGS_NOM.ubx += [cs.inf]
     # relative sliding vel
-    ## ARGS_NOM.lbx += [-U_nom_val[2,i]]
-    ## ARGS_NOM.ubx += [-U_nom_val[2,i]]
     ARGS_NOM.lbx += [-cs.inf]
     ARGS_NOM.ubx += [cs.inf]
     ## ---- Set nominal trajectory as parameters ----
@@ -229,11 +240,13 @@ for i in range(N_MPC-1):
     Bi = B_func(X_nom[:,i], U_nom[:,i])
     opt.g.extend([X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))])
     ## State constraints
-    opt.g += [U_bar[2,i]]
-    opt.g += [U_bar[2,i]]
+    opt.g += [U_bar[2,i] + bigM*Z[2,i]]
+    opt.g += [U_bar[2,i] - bigM*Z[1,i]]
     ## Control constraints
-    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i]]
-    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i]]
+    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] + bigM*Z[2,i]]
+    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] - bigM*(1-Z[1,i])]
+    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i] + bigM*Z[1,i]]
+    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i] - bigM*(1-Z[2,i])]
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p.extend(x_init.elements())
