@@ -30,7 +30,7 @@ import matplotlib.transforms as transforms
 #  -------------------------------------------------------------------
 N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
-N_g = 7 # number of optimization constraints
+N_g = 8 # number of optimization constraints
 g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
@@ -158,6 +158,8 @@ for i in range(N-1):
     ARGS_NOM.ubg += [0, 0, 0, 0]
     ## ---- State constraints ----
     ARGS_NOM.lbg += [-U_nom_val[2,i]]
+    ARGS_NOM.ubg += [cs.inf]
+    ARGS_NOM.lbg += [-cs.inf]
     ARGS_NOM.ubg += [-U_nom_val[2,i]]
     ## ---- Control constraints ----
     ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
@@ -227,6 +229,7 @@ for i in range(N_MPC-1):
     Bi = B_func(X_nom[:,i], U_nom[:,i])
     opt.g.extend([X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))])
     ## State constraints
+    opt.g += [U_bar[2,i]]
     opt.g += [U_bar[2,i]]
     ## Control constraints
     opt.g += [miu_p*U_bar[0,i]+U_bar[1,i]]
