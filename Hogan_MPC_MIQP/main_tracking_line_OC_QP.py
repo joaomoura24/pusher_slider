@@ -253,6 +253,8 @@ ax_ani.set_aspect('equal', 'box')
 ax_ani.set_title('Pusher-Slider Motion Animation')
 slider = patches.Rectangle([0,0], a, a)
 pusher = patches.Circle([0,0], radius=r_pusher, color='black')
+path_past, = ax_ani.plot(x0[0], x0[1], color='orange')
+path_past.set_linewidth(2)
 def init():
     ax_ani.add_patch(slider)
     ax_ani.add_patch(pusher)
@@ -268,6 +270,8 @@ def animate(i, slider, pusher):
     trans_ax = ax_ani.transData
     coords = trans_ax.transform(ci[0:2])
     trans_i = transforms.Affine2D().rotate_around(coords[0], coords[1], xi[2])
+    # Plot centre of the slider
+    path_past.set_data(X_opt[0,0:i],X_opt[1,0:i])
     # Set changes
     #slider.set_transform(trans_ax+trans_i)
     slider.set_transform(trans_ax+trans_i)
