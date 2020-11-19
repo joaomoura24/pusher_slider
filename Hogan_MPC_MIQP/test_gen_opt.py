@@ -13,6 +13,8 @@ import sys
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
+N_x = 4 # number of state variables
+N_u = 3 # number of actions variables
 g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
@@ -70,18 +72,98 @@ f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
 f_func = cs.Function('f', [x,u], [f])
 #  -------------------------------------------------------------------
 
+## Define structures for optimization variables and optimization arguments
+#  -------------------------------------------------------------------
+class OptVars():
+    x = None # optimization independent variables
+    g = None # optimization equality constraints
+    p = None # optimization parameters
+    f = None # optimization cost
+    discrete = None # flag for indicating integer variables
+class OptArgs():
+    x0 = None # initial guess for optimization independent varibles
+    p = None # parameters
+    lbg = None # lower bound for for constraint g
+    ubg = None # upper bound for the constraint g
+    lbx = None # lower bound for optimization variables
+    ubx = None # upper bound for optimization variables
+#  -------------------------------------------------------------------
+
 ## Generate Nominal Trajectory (line)
 #  -------------------------------------------------------------------
-# constant input and initial state
-u_const = [0.05, 0.0, 0.0]
-x0 = [0, 0, 0*(np.pi/180), 0]
+# specify plannar traj for line
+## x0_nom = np.linspace(0, 0.5, N)
+## x1_nom = np.zeros(x0_nom.shape)
+# specify plannar traj for circle
+s = np.linspace(-np.pi/2, np.pi/2, N)
+Amp = 0.25
+x0_nom = Amp*np.cos(s)
+x1_nom = Amp*np.sin(s) + Amp
 #  -------------------------------------------------------------------
-t = cs.SX.sym('t')
-dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
+# check trajectory
+fig_test = plt.figure()
+fig_test.canvas.set_window_title('Matplotlib Animation')
+ax = fig_test.add_subplot(111, aspect='equal', autoscale_on=False, \
+        xlim=(np.min(x0_nom)-0.1,np.max(x0_nom)+0.1), \
+        ylim=(np.min(x1_nom)-0.1,np.max(x1_nom)+0.1) \
+)
+ax.plot(x0_nom, x1_nom, color='red', linewidth=2.0, linestyle='dashed')
+ax.plot(x0_nom[0], x1_nom[0], x0_nom[-1], x1_nom[-1], marker='o', color='red')
+ax.grid();
+ax.set_aspect('equal', 'box')
+plt.show()
+#sys.exit(1)
+#  -------------------------------------------------------------------
+# compute diff for plannar traj
+dx0_nom = np.diff(x0_nom)
+dx1_nom = np.diff(x1_nom)
+# compute traj angle
+x2_nom = np.arctan2(dx1_nom, dx0_nom);
+x2_nom = np.append(x2_nom, x2_nom[-1])
+dx2_nom = np.diff(x2_nom)
+# specify angle of the pusher relative to slider
+x3_nom = np.zeros(x0_nom.shape)
+dx3_nom = np.diff(x3_nom)
+# stack state and derivative of state
+x_nom = np.vstack((x0_nom, x1_nom, x2_nom, x3_nom))
+dx_nom = np.vstack((dx0_nom, dx1_nom, dx2_nom, dx3_nom))/freq
+#  -------------------------------------------------------------------
+u_nom = cs.SX.sym('u_nom', N_u, N-1)
+opt = OptVars()
+args = OptArgs()
+## ---- Initialize variables for optimization problem ---
+opt.f = cs.SX(1,1)
+W_f = cs.SX(N_x, N_x);
+W_f[0,0] = W_f[1,1] = 10.0;
+W_f[2,2] = W_f[3,3] = 1.0;
+opt.x = []
+opt.g = []
+args.x0 = []
+args.lbx = []
+args.ubx = []
+for i in range(N-1):
+    # define cost
+    f_i = f_func(x_nom[:,i], u_nom[:,i])
+    err_i = dx_nom[:,i] - f_i
+    opt.f += cs.dot(err_i,cs.mtimes(W_f,err_i))
+    # define optimization variables
+    opt.x.extend(u_nom[:,i].elements())
+    # initial condition for opt var
+    args.x0 += [0.0, 0.0, 0.0]
+    # opt var boundaries
+    args.lbx += [-cs.inf, -cs.inf, -cs.inf]
+    args.ubx += [cs.inf, cs.inf, cs.inf]
+## ---- Create solver ----
+prob = {'f': opt.f, 'x': cs.vertcat(*opt.x)}
+solver = cs.nlpsol('solver', 'ipopt', prob)
+## ---- Solve optimization problem ----
+sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx)
+u_sol = sol['x']
+u_nom = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
+#  -------------------------------------------------------------------
 ts = np.linspace(0, T, N)
-F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
-sol = F(x0=x0)
-x_nom = np.array(F(x0=x0)['xf'])
+x0 = x_nom[:,0]
+print(x0)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -125,12 +207,12 @@ plt.show(block=False)
 fig = plt.figure()
 fig.canvas.set_window_title('Matplotlib Animation')
 ax = fig.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(-0.1,0.6), ylim=(-0.1,0.1) \
+        xlim=(np.min(x0_nom)-0.1,np.max(x0_nom)+0.1), \
+        ylim=(np.min(x1_nom)-0.1,np.max(x1_nom)+0.1) \
 )
 ax.plot(x_nom[0,:], x_nom[1,:], color='red', linewidth=2.0, linestyle='dashed')
 ax.plot(x_nom[0,0], x_nom[1,0], x_nom[0,-1], x_nom[1,-1], marker='o', color='red')
 ax.grid();
-#ax.set_axisbelow(True)
 ax.set_aspect('equal', 'box')
 ax.set_title('Pusher-Slider Motion Animation')
 d0 = np.array(cs.mtimes(R_func(x0),[-a/2, -a/2, 0]).T)[0]
