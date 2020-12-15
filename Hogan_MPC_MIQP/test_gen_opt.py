@@ -9,16 +9,14 @@ import matplotlib.patches as patches
 import matplotlib.animation as animation
 import matplotlib.transforms as transforms
 import sys
+import my_dynamics
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
 N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
-g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
-m = 0.827 # mass of the slider in kilo grams
-miu_g = 0.35 # coeficient of friction between slider and table
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
@@ -26,13 +24,6 @@ r_pusher = 0.01 # radious of the cilindrical pusher in meter
 ## Computing Problem constants
 #  -------------------------------------------------------------------
 N = T*freq # total number of iterations
-A = a**2 # area of the slider in meter square
-# Area integral of norm of the distance for a square:
-int_square = lambda a: dblquad(lambda x,y: np.sqrt((x**2) + (y**2)), -a/2, a/2, -a/2, a/2)[0]
-int_A = int_square(a)
-# Compute f and m max
-f_max = miu_g*m*g # limit force in Newton
-m_max = miu_g*m*g*int_A/A # limit torque Newton meter
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -48,28 +39,19 @@ x = cs.SX.sym('x', 4)
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider
 u = cs.SX.sym('u', 3)
+# b - dynamic parameters
+# b[0] - slider lenght [m]
+# b[1] - radious of the pusher [m]
+beta = [a, r_pusher]
 #  -------------------------------------------------------------------
 
 ## Build Motion Model
 #  -------------------------------------------------------------------
-c = m_max/f_max
-L = cs.SX.sym('L', cs.Sparsity.diag(3))
-L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
-ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
-R = cs.SX(3,3)
-R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
-R_func = cs.Function('R', [x], [R])
-xc = -a/2; yc = (a/2)*cs.sin(x[3])
-Jc = cs.SX(2,3)
-Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-B = cs.SX(Jc.T)
+R_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_R
 #  -------------------------------------------------------------------
-rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
-p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
+p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)])
 #  -------------------------------------------------------------------
-f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
-f_func = cs.Function('f', [x,u], [f])
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)])
 #  -------------------------------------------------------------------
 
 ## Define structures for optimization variables and optimization arguments

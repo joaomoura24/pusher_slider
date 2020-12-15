@@ -89,8 +89,6 @@ u = cs.veccat(v_norm, v_tan, psi_dot)
 # beta - dynamic parameters
 sl = cs.SX.sym('sl') # slider side lenght
 r_pusher = cs.SX.sym('r_pusher') # radious of the cilindrical pusher
-# A = cs.SX.sym('A') # slider area
-# int_A = cs.SX.sym('int_A') # integral of the norm of position vector
 beta = cs.veccat(sl, r_pusher)
 ## -------------------------------------------------------------------
 ## Build Motion Model
@@ -102,6 +100,7 @@ L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
 ctheta = cs.cos(theta); stheta = cs.sin(theta)
 R = cs.SX(3,3)
 R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
+square_slider_quasi_static_ellipsoidal_limit_surface_R = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_R', [x], [R])
 xc = -sl/2; yc = (sl/2)*cs.sin(psi)
 Jc = cs.SX(2,3)
 Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
@@ -109,10 +108,11 @@ B = cs.SX(Jc.T)
 #  -------------------------------------------------------------------
 rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
 p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
+square_slider_quasi_static_ellipsoidal_limit_surface_p = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_p', [x,beta], [p_pusher])
 #  -------------------------------------------------------------------
 f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
 # square_slider_quasi_static_ellipsoid_fric = cs.Function('f', [x,u,beta], [f])
-square_slider_quasi_static_ellipsoidal_limit_surface = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface', [x,u,beta], [f])
+square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_f', [x,u,beta], [f])
 #  -------------------------------------------------------------------
 
 # #  -------------------------------------------------------------------
