@@ -65,12 +65,12 @@ for ny in range(N):
                xx += (k1_x +2*k2_x +2*k3_x +k4_x)/6
         yy += (k1_y + 2*k2_y + 2*k3_y + k4_y)/6
 int_square_cs = cs.Function('int_square_cs', [side_lenght], [Q])
-side_const = 1.0
-print('np: ', int_quad_np(side_const))
-print('cs: ', int_quad_cs(side_const))
-print('np: ', int_square_np(side_const))
-print('cs: ', int_square_cs(side_const))
-sys.exit(1)
+# side_const = 1.0
+# print('np: ', int_quad_np(side_const))
+# print('cs: ', int_quad_cs(side_const))
+# print('np: ', int_square_np(side_const))
+# print('cs: ', int_square_cs(side_const))
+# sys.exit(1)
 
 ## -------------------------------------------------------------------
 ## build dynamic fuction for quasi-static ellipsoidal limit surface
@@ -87,41 +87,33 @@ v_tan = cs.SX.sym('v_tan') # in  local frame [m/s]
 psi_dot = cs.SX.sym('psi_dot') # rel vel between pusher and slider [rad/s]
 u = cs.veccat(v_norm, v_tan, psi_dot)
 # beta - dynamic parameters
-A = cs.SX.sym('A') # slider area
-int_A = cs.SX.sym('int_A') # integral of the norm of position vector
-b = cs.veccat(A, int_A)
+sl = cs.SX.sym('sl') # slider side lenght
+r_pusher = cs.SX.sym('r_pusher') # radious of the cilindrical pusher
+# A = cs.SX.sym('A') # slider area
+# int_A = cs.SX.sym('int_A') # integral of the norm of position vector
+beta = cs.veccat(sl, r_pusher)
 ## -------------------------------------------------------------------
 ## Build Motion Model
+A = sl**2
+int_A = int_square_cs(sl)
 c = int_A/A # ellipsoid approximation ratio
 L = cs.SX.sym('L', cs.Sparsity.diag(3))
 L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
-ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
+ctheta = cs.cos(theta); stheta = cs.sin(theta)
 R = cs.SX(3,3)
 R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
-R_func = cs.Function('R', [x], [R])
-
-
+xc = -sl/2; yc = (sl/2)*cs.sin(psi)
+Jc = cs.SX(2,3)
+Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
+B = cs.SX(Jc.T)
 #  -------------------------------------------------------------------
-# test
-a = cs.SX.sym('a')
-b1 = cs.SX.sym('b1')
-b2 = cs.SX.sym('b2')
-h = cs.Function('h', [b1,b2], [b1+b2])
-f = cs.Function('f', [a,b1,b2], [a+h(b1,b2)])
-print(cs.SX.is_constant(b1))
-# print(cs.SX.is_constant(2.0))
-print(f)
-g = cs.Function('g', [a], [f(a, 2, 2)])
-print(g)
-print(f(a,2,2))
-c1 = cs.SX.sym('c1')
-c2 = cs.SX.sym('c2')
-d = cs.SX.sym('d')
-print(h(c1,c2))
-print(h(1.0,1.0))
-print(g(d))
+rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
+p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
 #  -------------------------------------------------------------------
-
+f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
+# square_slider_quasi_static_ellipsoid_fric = cs.Function('f', [x,u,beta], [f])
+square_slider_quasi_static_ellipsoidal_limit_surface = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface', [x,u,beta], [f])
+#  -------------------------------------------------------------------
 
 # #  -------------------------------------------------------------------
 # xc = -a/2; yc = (a/2)*cs.sin(x[3])
