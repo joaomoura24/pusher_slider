@@ -10,6 +10,8 @@ import matplotlib.animation as animation
 import matplotlib.transforms as transforms
 import sys
 import my_dynamics
+import my_trajectories
+import my_plots
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -24,6 +26,7 @@ r_pusher = 0.01 # radious of the cilindrical pusher in meter
 ## Computing Problem constants
 #  -------------------------------------------------------------------
 N = T*freq # total number of iterations
+dt = 1.0/freq
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -71,44 +74,16 @@ class OptArgs():
     ubx = None # upper bound for optimization variables
 #  -------------------------------------------------------------------
 
-## Generate Nominal Trajectory (line)
+## Generate Nominal Trajector
 #  -------------------------------------------------------------------
-# specify plannar traj for line
-## x0_nom = np.linspace(0, 0.5, N)
-## x1_nom = np.zeros(x0_nom.shape)
-# specify plannar traj for circle
-s = np.linspace(-np.pi/2, np.pi/2, N)
-Amp = 0.25
-x0_nom = Amp*np.cos(s)
-x1_nom = Amp*np.sin(s) + Amp
+x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0., N)
+#  ------------------------------------------------------------------
+my_plots.plot_traj_static(x0_nom, x1_nom)
 #  -------------------------------------------------------------------
-# check trajectory
-fig_test = plt.figure()
-fig_test.canvas.set_window_title('Matplotlib Animation')
-ax = fig_test.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(np.min(x0_nom)-0.1,np.max(x0_nom)+0.1), \
-        ylim=(np.min(x1_nom)-0.1,np.max(x1_nom)+0.1) \
-)
-ax.plot(x0_nom, x1_nom, color='red', linewidth=2.0, linestyle='dashed')
-ax.plot(x0_nom[0], x1_nom[0], x0_nom[-1], x1_nom[-1], marker='o', color='red')
-ax.grid();
-ax.set_aspect('equal', 'box')
-plt.show()
-#sys.exit(1)
-#  -------------------------------------------------------------------
-# compute diff for plannar traj
-dx0_nom = np.diff(x0_nom)
-dx1_nom = np.diff(x1_nom)
-# compute traj angle
-x2_nom = np.arctan2(dx1_nom, dx0_nom);
-x2_nom = np.append(x2_nom, x2_nom[-1])
-dx2_nom = np.diff(x2_nom)
-# specify angle of the pusher relative to slider
-x3_nom = np.zeros(x0_nom.shape)
-dx3_nom = np.diff(x3_nom)
 # stack state and derivative of state
-x_nom = np.vstack((x0_nom, x1_nom, x2_nom, x3_nom))
-dx_nom = np.vstack((dx0_nom, dx1_nom, dx2_nom, dx3_nom))/freq
+x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  -------------------------------------------------------------------
 u_nom = cs.SX.sym('u_nom', N_u, N-1)
 opt = OptVars()
