@@ -28,4 +28,4 @@ def plot_traj_static(x_data, y_data, margin_width=0.1):
     ax.grid();
     ax.set_aspect('equal', 'box')
     ax.set(xlabel='x [m]', ylabel='y [m]', title='Nominal trajectory')
-    plt.show(block=False)
+    plt.show()

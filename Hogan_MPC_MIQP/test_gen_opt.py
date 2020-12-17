@@ -19,7 +19,7 @@ import my_plots
 N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 a = 0.09 # side dimension of the square slider in meters
-T = 10 # time of the simulation is seconds
+T = 5 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
 #  -------------------------------------------------------------------
@@ -82,54 +82,41 @@ class OptArgs():
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
 x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  ------------------------------------------------------------------
-my_plots.plot_traj_static(x0_nom, x1_nom)
+# my_plots.plot_traj_static(x0_nom, x1_nom)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  -------------------------------------------------------------------
 u_nom = cs.SX.sym('u_nom', N_u, N-1)
+#  -------------------------------------------------------------------
+
+## ---- Initialize variables for optimization problem ---
+#  -------------------------------------------------------------------
+# declare cost functiopn
+W_f = cs.diag(cs.SX([10.0,10.0,1.0,1.0]))
+vel_error = dx - f_func(x, u)
+cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
+cost_F = cost_f.map(N-1)
+#  -------------------------------------------------------------------
 opt = OptVars()
-args = OptArgs()
+# define cost function
+opt.f = cs.sum2(cost_F(x_nom[:,-2], dx_nom, u_nom))
+# define optimization variables
+opt.x = cs.vertcat(*u_nom.elements())
+#  -------------------------------------------------------------------
 
 ## Generating solver
 #  -------------------------------------------------------------------
-## ---- Initialize variables for optimization problem ---
-opt.f = cs.SX(1,1)
-W_f = cs.SX(N_x, N_x);
-W_f[0,0] = W_f[1,1] = 10.0;
-W_f[2,2] = W_f[3,3] = 1.0;
-opt.x = []
-opt.g = []
-# define cost function
-# error = dx - f_func(x, u)
-# print(error)
-# sys.exit(1)
-# cost_f = cs.Function('cost', [x, dx, u], [])
-for i in range(N-1):
-    # define cost
-    f_i = f_func(x_nom[:,i], u_nom[:,i])
-    err_i = dx_nom[:,i] - f_i
-    opt.f += cs.dot(err_i,cs.mtimes(W_f,err_i))
-    # define optimization variables
-    opt.x.extend(u_nom[:,i].elements())
-## ---- Create solver ----
-prob = {'f': opt.f, 'x': cs.vertcat(*opt.x)}
+# prob = {'f': opt.f, 'x': cs.vertcat(*opt.x)}
+prob = {'f': opt.f, 'x': opt.x}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #  -------------------------------------------------------------------
 
 ## Instanciating optimizer arguments
 #  -------------------------------------------------------------------
-# args.x0 = []
-# args.lbx = []
-# args.ubx = []
-# for i in range(N-1):
-#     args.x0 += [0.0, 0.0, 0.0]
-#     args.lbx += [-cs.inf, -cs.inf, -cs.inf]
-#     args.ubx += [cs.inf, cs.inf, cs.inf]
+args = OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((N-1)*3)
-# print(args.x0)
-# sys.exit(1)
 # opt var boundaries
 args.lbx = [-cs.inf]*((N-1)*3)
 args.ubx = [cs.inf]*((N-1)*3)
