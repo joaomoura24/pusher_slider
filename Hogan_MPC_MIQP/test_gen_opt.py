@@ -12,6 +12,7 @@ import sys
 import my_dynamics
 import my_trajectories
 import my_plots
+import my_opt
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -59,23 +60,6 @@ p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_qua
 f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)])
 #  -------------------------------------------------------------------
 
-## Define structures for optimization variables and optimization arguments
-#  -------------------------------------------------------------------
-class OptVars():
-    x = None # optimization independent variables
-    g = None # optimization equality constraints
-    p = None # optimization parameters
-    f = None # optimization cost
-    discrete = None # flag for indicating integer variables
-class OptArgs():
-    x0 = None # initial guess for optimization independent varibles
-    p = None # parameters
-    lbg = None # lower bound for for constraint g
-    ubg = None # upper bound for the constraint g
-    lbx = None # lower bound for optimization variables
-    ubx = None # upper bound for optimization variables
-#  -------------------------------------------------------------------
-
 ## Generate Nominal Trajector
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
@@ -98,7 +82,7 @@ vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
 cost_F = cost_f.map(N-1)
 #  -------------------------------------------------------------------
-opt = OptVars()
+opt = my_opt.OptVars()
 # define cost function
 opt.f = cs.sum2(cost_F(x_nom[:,-2], dx_nom, u_nom))
 # define optimization variables
@@ -114,7 +98,7 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 
 ## Instanciating optimizer arguments
 #  -------------------------------------------------------------------
-args = OptArgs()
+args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((N-1)*3)
 # opt var boundaries
@@ -130,9 +114,11 @@ u_nom = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 ts = np.linspace(0, T, N)
 x0 = x_nom[:,0]
-print(x0)
 #  -------------------------------------------------------------------
 
+## TODO: organize plotting and animation
+## TODO: check the discontinuity in one of the angles
+## TODO: add friction cone constraints to the optimization
 # Plot Optimization Results
 #  -------------------------------------------------------------------
 fig = plt.figure(constrained_layout=True)
