@@ -34,6 +34,7 @@ y = cs.SX.sym('y')
 DX = side_lenght/(N*M)
 DY = side_lenght/(N*M)
 ## -------------------------------------------------------------------
+## 1D casadi integration of g
 # cost function
 g = cs.Function('g_ext', [x], [DX, (x**2)*DX])
 Q = 0 # initialize cost
@@ -48,6 +49,7 @@ for n in range(N):
        xx += (k1 +2*k2 +2*k3 +k4)/6
 int_quad_cs = cs.Function('int_quad_cs', [side_lenght], [Q])
 ## -------------------------------------------------------------------
+## 2D casadi integration of g
 g = cs.Function('h_ext', [x, y], [DX, DY, (cs.sqrt((x**2)+(y**2)))*DX*DY])
 Q = 0 # initialize cost
 yy = -side_lenght/2 # initialize initial cond

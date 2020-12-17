@@ -37,6 +37,8 @@ dt = 1.0/freq
 # x[2] - slider orientation in the global frame
 # x[3] - angle of pusher relative to slider
 x = cs.SX.sym('x', 4)
+# dx - state vector derivative
+dx = cs.SX.sym('dx', 4)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
@@ -76,9 +78,9 @@ class OptArgs():
 
 ## Generate Nominal Trajector
 #  -------------------------------------------------------------------
-x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0., N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  ------------------------------------------------------------------
 my_plots.plot_traj_static(x0_nom, x1_nom)
 #  -------------------------------------------------------------------
@@ -88,6 +90,9 @@ x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt
 u_nom = cs.SX.sym('u_nom', N_u, N-1)
 opt = OptVars()
 args = OptArgs()
+
+## Generating solver
+#  -------------------------------------------------------------------
 ## ---- Initialize variables for optimization problem ---
 opt.f = cs.SX(1,1)
 W_f = cs.SX(N_x, N_x);
@@ -95,9 +100,11 @@ W_f[0,0] = W_f[1,1] = 10.0;
 W_f[2,2] = W_f[3,3] = 1.0;
 opt.x = []
 opt.g = []
-args.x0 = []
-args.lbx = []
-args.ubx = []
+# define cost function
+# error = dx - f_func(x, u)
+# print(error)
+# sys.exit(1)
+# cost_f = cs.Function('cost', [x, dx, u], [])
 for i in range(N-1):
     # define cost
     f_i = f_func(x_nom[:,i], u_nom[:,i])
@@ -105,14 +112,30 @@ for i in range(N-1):
     opt.f += cs.dot(err_i,cs.mtimes(W_f,err_i))
     # define optimization variables
     opt.x.extend(u_nom[:,i].elements())
-    # initial condition for opt var
-    args.x0 += [0.0, 0.0, 0.0]
-    # opt var boundaries
-    args.lbx += [-cs.inf, -cs.inf, -cs.inf]
-    args.ubx += [cs.inf, cs.inf, cs.inf]
 ## ---- Create solver ----
 prob = {'f': opt.f, 'x': cs.vertcat(*opt.x)}
 solver = cs.nlpsol('solver', 'ipopt', prob)
+#  -------------------------------------------------------------------
+
+## Instanciating optimizer arguments
+#  -------------------------------------------------------------------
+# args.x0 = []
+# args.lbx = []
+# args.ubx = []
+# for i in range(N-1):
+#     args.x0 += [0.0, 0.0, 0.0]
+#     args.lbx += [-cs.inf, -cs.inf, -cs.inf]
+#     args.ubx += [cs.inf, cs.inf, cs.inf]
+# initial condition for opt var
+args.x0 = [0.0]*((N-1)*3)
+# print(args.x0)
+# sys.exit(1)
+# opt var boundaries
+args.lbx = [-cs.inf]*((N-1)*3)
+args.ubx = [cs.inf]*((N-1)*3)
+#  -------------------------------------------------------------------
+
+#  -------------------------------------------------------------------
 ## ---- Solve optimization problem ----
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx)
 u_sol = sol['x']
