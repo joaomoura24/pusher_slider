@@ -20,6 +20,7 @@ a = 0.09 # side dimension of the square slider in meters
 T = 5 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
+miu_p = 0.3 # coeficient of friction between pusher and slider
 show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
@@ -60,9 +61,9 @@ f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_el
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  ------------------------------------------------------------------
 # compute diff for plannar traj
 x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -87,11 +88,13 @@ opt = my_opt.OptVars()
 opt.f = cs.sum2(cost_F(x_nom[:,-2], dx_nom, u_nom))
 # define optimization variables
 opt.x = cs.vertcat(*u_nom.elements())
+# define Sticking constraint
+opt.g = cs.horzcat(*[miu_p*u_nom[0,:]-u_nom[1,:], miu_p*u_nom[0,:]+u_nom[1,:]])
 #  -------------------------------------------------------------------
 
 ## Generating solver
 #  -------------------------------------------------------------------
-prob = {'f': opt.f, 'x': opt.x}
+prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #  -------------------------------------------------------------------
 
@@ -103,11 +106,14 @@ args.x0 = [0.0]*((N-1)*3)
 # opt var boundaries
 args.lbx = [-cs.inf]*((N-1)*3)
 args.ubx = [cs.inf]*((N-1)*3)
+# arg for sticking constraint
+args.lbg = [0.0]*((N-1)*2)
+args.ubg = [cs.inf]*((N-1)*2)
 #  -------------------------------------------------------------------
 
 ## Solve optimization problem
 #  -------------------------------------------------------------------
-sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx)
+sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
 u_opt = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 #  -------------------------------------------------------------------
