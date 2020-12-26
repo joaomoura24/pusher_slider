@@ -40,7 +40,15 @@ def compute_nomState_from_nomTraj(x_data, y_data, dt):
     Dx0_nom = np.diff(x0_nom)
     Dx1_nom = np.diff(x1_nom)
     # compute traj angle 
-    x2_nom = np.arctan2(Dx1_nom, Dx0_nom);
+    ND = len(Dx0_nom)
+    x2_nom = np.empty(ND)
+    theta = 0.0
+    for i in range(ND):
+        c, s = np.cos(theta), np.sin(theta)
+        R = np.array(((c, s), (-s, c)))
+        Dx_new = R.dot(np.array((Dx0_nom[i],Dx1_nom[i])))
+        theta += np.arctan2(Dx_new[1], Dx_new[0])
+        x2_nom[i] = theta
     x2_nom = np.append(x2_nom, x2_nom[-1])
     Dx2_nom = np.diff(x2_nom)
     # specify angle of the pusher relative to slider

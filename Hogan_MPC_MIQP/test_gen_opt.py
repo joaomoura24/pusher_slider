@@ -1,12 +1,11 @@
 ## Import Libraries
 #  -------------------------------------------------------------------
 import numpy as np
-from scipy.integrate import dblquad 
 import casadi as cs
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
 import matplotlib.animation as animation
 import sys
+#  -------------------------------------------------------------------
 import my_dynamics
 import my_trajectories
 import my_plots
@@ -21,7 +20,7 @@ a = 0.09 # side dimension of the square slider in meters
 T = 5 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
-show_anim = False
+show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -61,9 +60,12 @@ f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_el
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+#  ------------------------------------------------------------------
+# compute diff for plannar traj
+x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 # stack state and derivative of state
 x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -119,7 +121,7 @@ axs[0].plot(ts, x_nom[0,:], color='b', label='x')
 axs[0].plot(ts, x_nom[1,:], color='g', label='y')
 handles, labels = axs[0].get_legend_handles_labels()
 axs[0].legend(handles, labels)
-axs[0].set_ylabel('nom traj [m]')
+axs[0].set_ylabel('pos [m]')
 axs[0].set_title('Slider CoM')
 axs[0].grid()
 #  -------------------------------------------------------------------
