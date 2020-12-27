@@ -65,9 +65,6 @@ x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25,
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  ------------------------------------------------------------------
-# compute diff for plannar traj
-x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
-#  ------------------------------------------------------------------
 # stack state and derivative of state
 x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  -------------------------------------------------------------------
@@ -77,15 +74,15 @@ x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt
 # control path variables
 u_nom = cs.SX.sym('u_nom', N_u, N-1)
 #  -------------------------------------------------------------------
-# declare cost functiopn
-W_f = cs.diag(cs.SX([10.0,10.0,1.0,1.0]))
+# declare cost function
+W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.01]))
 vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
 cost_F = cost_f.map(N-1)
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 # define cost function
-opt.f = cs.sum2(cost_F(x_nom[:,-2], dx_nom, u_nom))
+opt.f = cs.sum2(cost_F(x_nom[:,0:-1], dx_nom, u_nom))
 # define optimization variables
 opt.x = cs.vertcat(*u_nom.elements())
 # define Sticking constraint
@@ -104,8 +101,8 @@ args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((N-1)*3)
 # opt var boundaries
-args.lbx = [-cs.inf]*((N-1)*3)
-args.ubx = [cs.inf]*((N-1)*3)
+args.lbx = [-cs.inf, -cs.inf, 0.0]*(N-1)
+args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((N-1)*2)
 args.ubg = [cs.inf]*((N-1)*2)
@@ -116,11 +113,13 @@ args.ubg = [cs.inf]*((N-1)*2)
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
 u_opt = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
+cost_opt = cost_F(x_nom[:,0:-1], dx_nom, u_opt).T
+total_cost_opt = sol['f']
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(3, 1, sharex=True, figsize=(6,7))
+fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
 #  -------------------------------------------------------------------
 ts = np.linspace(0, T, N)
 axs[0].plot(ts, x_nom[0,:], color='b', label='x')
@@ -144,10 +143,15 @@ axs[2].plot(ts, u_opt[0,:], color='b', label='norm')
 axs[2].plot(ts, u_opt[1,:], color='r', label='tan')
 handles, labels = axs[2].get_legend_handles_labels()
 axs[2].legend(handles, labels)
-axs[2].set_xlabel('time [s]')
 axs[2].set_ylabel('vel [m/s]')
 axs[2].set_title('Puhser control vel')
 axs[2].grid()
+#  -------------------------------------------------------------------
+axs[3].plot(ts, np.array(cost_opt), color='b', label='cost')
+axs[3].set_xlabel('time [s]')
+axs[3].set_ylabel('cost ')
+axs[3].set_title('cost along traj. - total: ' + str(total_cost_opt))
+axs[3].grid()
 #  -------------------------------------------------------------------
 
 # Animation of Nominal Trajectory
