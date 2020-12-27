@@ -54,9 +54,9 @@ beta = [a, r_pusher]
 #  -------------------------------------------------------------------
 R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_R
 #  -------------------------------------------------------------------
-p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)])
+p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
-f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)])
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
