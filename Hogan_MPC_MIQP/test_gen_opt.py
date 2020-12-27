@@ -61,8 +61,9 @@ f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_el
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.5, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  ------------------------------------------------------------------
 # stack state and derivative of state
@@ -160,7 +161,7 @@ if show_anim:
 #  -------------------------------------------------------------------
     fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
-    slider, pusher = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+    slider, pusher, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
             R_pusher_func, 

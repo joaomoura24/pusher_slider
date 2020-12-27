@@ -23,14 +23,16 @@ def get_patches_for_square_slider_and_cicle_pusher(ax, pfunc, Rfunc, x_data, sq_
     d0 = np.array(cs.mtimes(Rfunc(x0),[-sq_sd/2, -sq_sd/2, 0]).T)[0]
     slider = patches.Rectangle(x0[0:2]+d0[0:2], sq_sd, sq_sd, x0[2])
     pusher = patches.Circle(np.array(pfunc(x0)), radius=r_pusher, color='black')
+    path, = ax.plot(x0[0], x0[1], color='orange')
     ax.add_patch(slider)
     ax.add_patch(pusher)
-    return slider, pusher
+    path.set_linewidth(2)
+    return slider, pusher, path
 #  -------------------------------------------------------------------
 
 ## Return patches
 #  -------------------------------------------------------------------
-def animate_square_slider_and_circle_pusher(i, slider, pusher, ax, pfunc, Rfunc, x_data, sq_sd):
+def animate_square_slider_and_circle_pusher(i, slider, pusher, ax, pfunc, Rfunc, x_data, sq_sd, path=None):
     xi = x_data[:,i]
     # distance between centre of square reference corner
     di = np.array(cs.mtimes(Rfunc(xi),[-sq_sd/2, -sq_sd/2, 0]).T)[0]
@@ -44,6 +46,9 @@ def animate_square_slider_and_circle_pusher(i, slider, pusher, ax, pfunc, Rfunc,
     slider.set_transform(trans_ax+trans_i)
     slider.set_xy([ci[0], ci[1]])
     pusher.set_center(np.array(pfunc(xi)))
+    # Set path changes
+    if path is not None:
+        path.set_data(x_data[0,0:i],x_data[1,0:i])
     return []
 #  -------------------------------------------------------------------
 

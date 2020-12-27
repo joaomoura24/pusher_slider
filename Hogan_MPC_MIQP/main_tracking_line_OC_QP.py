@@ -28,25 +28,19 @@ import my_opt
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
-g = 9.81 # gravity acceleration constant in meter per second square
+N_x = 4 # number of state variables
+N_u = 3 # number of actions variables
 a = 0.09 # side dimension of the square slider in meters
-m = 0.827 # mass of the slider in kilo grams
-miu_g = 0.35 # coeficient of friction between slider and table
 miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
-r_pusher = 0.005 # radious of the cilindrical pusher in meter
+r_pusher = 0.01 # radious of the cilindrical pusher in meter
+show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
 N = T*freq # total number of iterations
-h = 1./freq # time interval of each iteration
-A = a**2 # area of the slider in meter square
-f_max = miu_g*m*g # limit force in Newton
-# Area integral of norm of the distance for a square:
-int_square = lambda a: dblquad(lambda x,y: np.sqrt(x**2 + y**2), -a/2, a/2, -a/2, a/2)[0]
-int_A = int_square(a)
-m_max = miu_g*m*g*int_A/A # limit torque Newton meter
+dt = 1.0/freq # time interval of each iteration
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -77,46 +71,60 @@ R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface
 p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
 f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
-# c = m_max/f_max
-# L = cs.SX.sym('L', cs.Sparsity.diag(3))
-# L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
-# ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
-# R = cs.SX(3,3)
-# R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
-# R_func = cs.Function('R', [x], [R])
-# xc = -a/2; yc = (a/2)*cs.sin(x[3])
-# Jc = cs.SX(2,3)
-# Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-# B = cs.SX(Jc.T)
-# #  -------------------------------------------------------------------
-# rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-# p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
-# p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
-# #  -------------------------------------------------------------------
-# f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
-# f_func = cs.Function('f', [x,u], [f])
 #  -------------------------------------------------------------------
 
 ## Compute Jacobians
 #  -------------------------------------------------------------------
-# A = cs.jacobian(f, x)#[0:3,0:3]
 A_func = cs.Function('A_func', [x,u], [cs.jacobian(f_func(x,u), x)], ['x', 'u'], ['A'])
 B_func = cs.Function('B_func', [x,u], [cs.jacobian(f_func(x,u), u)], ['x', 'u'], ['B'])
-# B = cs.jacobian(f, u)#[0:3,0:2]
-# B_func = cs.Function('B', [x,u], [B])
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory (line)
 #  -------------------------------------------------------------------
-# constant input and initial state
-u_const = cs.SX(3,1); u_const[0] = 0.05
-x0 = [0, 0, 0, 0]
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  -------------------------------------------------------------------
-t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
-dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
-F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
-X_nom = F(x0=x0)['xf']
-U_nom = cs.repmat(u_const, 1, N-1)
+# stack state and derivative of state
+X_nom, dX_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+#  ------------------------------------------------------------------
+# control path variables
+u_nom = cs.SX.sym('u_nom', N_u, N-1)
+#  ------------------------------------------------------------------
+# declare cost function
+W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.01]))
+vel_error = dx - f_func(x, u)
+cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
+cost_F = cost_f.map(N-1)
+#  -------------------------------------------------------------------
+opt = my_opt.OptVars()
+# define cost function
+opt.f = cs.sum2(cost_F(X_nom[:,0:-1], dX_nom, u_nom))
+# define optimization variables
+opt.x = cs.vertcat(*u_nom.elements())
+# define Sticking constraint
+opt.g = cs.horzcat(*[miu_p*u_nom[0,:]-u_nom[1,:], miu_p*u_nom[0,:]+u_nom[1,:]])
+#  -------------------------------------------------------------------
+# Generating solver
+prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
+solver = cs.nlpsol('solver', 'ipopt', prob)
+#  -------------------------------------------------------------------
+# Instanciating optimizer arguments
+args = my_opt.OptArgs()
+# initial condition for opt var
+args.x0 = [0.0]*((N-1)*3)
+# opt var boundaries
+args.lbx = [-cs.inf, -cs.inf, 0.0]*(N-1)
+args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
+# arg for sticking constraint
+args.lbg = [0.0]*((N-1)*2)
+args.ubg = [cs.inf]*((N-1)*2)
+#  -------------------------------------------------------------------
+# Solve optimization problem
+sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
+u_sol = sol['x']
+U_nom = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
@@ -152,7 +160,7 @@ for i in range(N-1):
     ## ---- Dynamic constraints ----
     Ai = A_func(X_nom[:,i], U_nom[:,i])
     Bi = B_func(X_nom[:,i], U_nom[:,i])
-    g += [X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
+    g += [X_bar[:,i+1]-X_bar[:,i]-dt*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
     lbg += [0, 0, 0, 0]
     ubg += [0, 0, 0, 0]
 for i in range(N-1):
@@ -210,101 +218,64 @@ U_opt = U_bar_opt + U_nom
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig = plt.figure(constrained_layout=True)
-spec = gridspec.GridSpec(ncols=2, nrows=2, figure=fig)
-ax_x = fig.add_subplot(spec[0, 0])
-ax_y = fig.add_subplot(spec[0, 1])
-ax_ang = fig.add_subplot(spec[1, 0])
-ax_fn = fig.add_subplot(spec[1, 1])
+fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
 #  -------------------------------------------------------------------
-ax_x.plot(ts, X_nom[0,:], color='b', label='nom')
-ax_x.plot(ts, X_opt[0,:], color='r', label='opt')
-handles, labels = ax_x.get_legend_handles_labels()
-ax_x.legend(handles, labels)
-ax_x.set(xlabel='time [s]', ylabel='position [m]',
-               title='Slider CoM x position')
-ax_x.grid()
+ts = np.linspace(0, T, N)
+axs[0].plot(ts, X_nom[0,:], 'b', label='x nom')
+axs[0].plot(ts, X_opt[0,:], '--g', label='x opt')
+axs[0].plot(ts, X_nom[1,:], 'r', label='y nom')
+axs[0].plot(ts, X_opt[1,:], '--y', label='y opt')
+handles, labels = axs[0].get_legend_handles_labels()
+axs[0].legend(handles, labels)
+axs[0].set_ylabel('position [m]')
+axs[0].set_title('Slider CoM')
+axs[0].grid()
 #  -------------------------------------------------------------------
-ax_y.plot(ts, X_nom[1,:], color='b', label='nom')
-ax_y.plot(ts, X_opt[1,:], color='r', label='opt')
-handles, labels = ax_y.get_legend_handles_labels()
-ax_y.legend(handles, labels)
-ax_y.set(xlabel='time [s]', ylabel='position [m]',
-               title='Slider CoM y position')
-ax_y.grid()
+axs[1].plot(ts, X_nom[2,:]*(180/np.pi), 'b', label='slider nom')
+axs[1].plot(ts, X_opt[2,:]*(180/np.pi), '--g', label='slider opt')
+axs[1].plot(ts, X_nom[3,:]*(180/np.pi), 'r', label='pusher nom')
+axs[1].plot(ts, X_opt[3,:]*(180/np.pi), '--y', label='pusher opt')
+handles, labels = axs[1].get_legend_handles_labels()
+axs[1].legend(handles, labels)
+axs[1].set_ylabel('angles [degrees]')
+axs[1].set_title('Angles of pusher and Slider')
+axs[1].grid()
 #  -------------------------------------------------------------------
-ax_ang.plot(ts, X_opt[2,:]*(180/np.pi), color='b', label='slider')
-ax_ang.plot(ts, X_opt[3,:]*(180/np.pi), color='r', label='pusher')
-handles, labels = ax_ang.get_legend_handles_labels()
-ax_ang.legend(handles, labels)
-ax_ang.set(xlabel='time [s]', ylabel='angles [degrees]',
-               title='Angles of pusher and Slider')
-ax_ang.grid()
-#  -------------------------------------------------------------------
-ax_fn.plot(ts[0:N-1], U_opt[0,:], color='b', label='norm')
-ax_fn.plot(ts[0:N-1], U_opt[1,:], color='g', label='tan')
-handles, labels = ax_fn.get_legend_handles_labels()
-ax_fn.legend(handles, labels)
-ax_fn.set(xlabel='time [s]', ylabel='force [N]',
-               title='Pusher vel. on slider')
-ax_fn.grid()
-#  -------------------------------------------------------------------
-plt.show(block=False)
-#sys.exit(1)
+ts = np.linspace(0, T, N-1)
+axs[2].plot(ts, U_opt[0,:], color='b', label='norm')
+axs[2].plot(ts, U_opt[1,:], color='g', label='tan')
+handles, labels = axs[2].get_legend_handles_labels()
+axs[2].legend(handles, labels)
+axs[2].set_xlabel('time [s]')
+axs[2].set_ylabel('vel [m/s]')
+axs[2].set_title('Puhser control vel')
+axs[2].grid()
 #  -------------------------------------------------------------------
 
 # Animation of Nominal Trajectory
 #  -------------------------------------------------------------------
-# set up the figure and subplot
-fig_ani = plt.figure()
-fig_ani.canvas.set_window_title('Matplotlib Animation')
-ax_ani = fig_ani.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(-0.1,0.6), ylim=(-0.1,0.1) \
-)
-# draw nominal trajectory
-ax_ani.plot(X_nom[0,:], X_nom[1,:], color='red', linewidth=2.0, linestyle='dashed')
-ax_ani.plot(X_nom[0,0], X_nom[1,0], X_nom[0,-1], X_nom[1,-1], marker='o', color='red')
-ax_ani.grid();
-#ax_ani.set_axisbelow(True)
-ax_ani.set_aspect('equal', 'box')
-ax_ani.set_title('Pusher-Slider Motion Animation')
-slider = patches.Rectangle([0,0], a, a)
-pusher = patches.Circle([0,0], radius=r_pusher, color='black')
-path_past, = ax_ani.plot(x0[0], x0[1], color='orange')
-path_past.set_linewidth(2)
-def init():
-    ax_ani.add_patch(slider)
-    ax_ani.add_patch(pusher)
-    return []
-    #return slider,
-def animate(i, slider, pusher):
-    xi = X_opt[:,i]
-    # distance between centre of square reference corner
-    di=np.array(cs.mtimes(R_pusher_func(xi),[-a/2, -a/2, 0]).T)[0]
-    # square reference corner
-    ci = xi[0:3] + di
-    # compute transformation with respect to rotation angle xi[2]
-    trans_ax = ax_ani.transData
-    coords = trans_ax.transform(ci[0:2])
-    trans_i = transforms.Affine2D().rotate_around(coords[0], coords[1], xi[2])
-    # Plot centre of the slider
-    path_past.set_data(X_opt[0,0:i],X_opt[1,0:i])
-    # Set changes
-    #slider.set_transform(trans_ax+trans_i)
-    slider.set_transform(trans_ax+trans_i)
-    slider.set_xy([ci[0], ci[1]])
-    pusher.set_center(np.array(p_pusher_func(xi)))
-    return []
-#init()
-# call the animation
-ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
-        fargs=(slider,pusher,),
-        frames=N,
-        interval=T,
-        blit=True, repeat=False)
-## to save animation, uncomment the line below:
-#ani.save('sliding_tracking_line_fullTO_QP.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
-#ani.save('sliding_tracking_line_fullTO_QP.gif', writer='imagemagick', fps=freq)
-#show the animation
+if show_anim:
+#  -------------------------------------------------------------------
+    fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
+    # get slider and pusher patches
+    slider, pusher, path = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+            ax, 
+            p_pusher_func, 
+            R_pusher_func, 
+            X_opt,
+            a, r_pusher)
+    # call the animation
+    ani = animation.FuncAnimation( fig,
+            my_plots.animate_square_slider_and_circle_pusher,
+            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_opt, a, path),
+            frames=N,
+            interval=T,
+            blit=True,
+            repeat=False)
+    ## to save animation, uncomment the line below:
+    ## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
+#  -------------------------------------------------------------------
+
+#  -------------------------------------------------------------------
 plt.show()
 #  -------------------------------------------------------------------
