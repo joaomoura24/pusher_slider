@@ -129,54 +129,62 @@ U_nom = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-# Set nominal trajectory to numerical values
-X_nom = np.array(X_nom)
-U_nom = np.array(cs.DM(U_nom))
+opt = my_opt.OptVars()
 ## ---- Input variables ---
 X_bar = cs.SX.sym('x_bar', 4, N)
 U_bar = cs.SX.sym('u_bar', 3, N-1)
-## ---- Optimization objective ----------
+## ---- Optimization objective ---
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
-Cost = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
-for i in range(N-1):
-    Cost += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
+cost_f = cs.Function('cost', [x, u], [cs.dot(x,cs.mtimes(Qcost,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
+cost_F = cost_f.map(N-1)
+# define cost function
+opt.f = cost_f(X_bar[:,0], cs.SX(N_u, 1)) + cs.sum2(cost_F(X_bar[:,1:], U_bar))
+# sys.exit(1)
+# Cost = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
+# for i in range(N-1):
+#     Cost += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
 ## ---- Initialize variables for optimization problem ---
+args = my_opt.OptArgs()
 w=[]
 lbw = []
 ubw = []
 w0=[]
-g = []
-lbg = []
-ubg = []
+opt.g = []
+args.lbg = []
+args.ubg = []
 ## ---- Initial Conditions ----
 x0 = [-0.01, 0.03, 30*(np.pi/180.), 0]
-xf = np.transpose(np.array(X_nom[:,-1].T)[0])
-X0 = np.transpose(np.linspace(x0,xf,N))
-g += [X_bar[:,0]+X_nom[:,0]-x0]
-lbg += [0, 0, 0, 0]
-ubg += [0, 0, 0, 0]
+opt.g += [X_bar[:,0]+X_nom[:,0]-x0]
+args.lbg += [0, 0, 0, 0]
+args.ubg += [0, 0, 0, 0]
 for i in range(N-1):
     ## ---- Dynamic constraints ----
     Ai = A_func(X_nom[:,i], U_nom[:,i])
     Bi = B_func(X_nom[:,i], U_nom[:,i])
-    g += [X_bar[:,i+1]-X_bar[:,i]-dt*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
-    lbg += [0, 0, 0, 0]
-    ubg += [0, 0, 0, 0]
+    opt.g += [X_bar[:,i+1]-X_bar[:,i]-dt*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
+    args.lbg += [0, 0, 0, 0]
+    args.ubg += [0, 0, 0, 0]
 for i in range(N-1):
     ## ---- Control constraints ----
-    g += [miu_p*U_bar[0,i]+U_bar[1,i]]
-    lbg += [-(miu_p*U_nom[0,i]+U_nom[1,i])]
-    ubg += [cs.inf]
-    g += [miu_p*U_bar[0,i]-U_bar[1,i]]
-    lbg += [-(miu_p*U_nom[0,i]-U_nom[1,i])]
-    ubg += [cs.inf]
+    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i]]
+    args.lbg += [-(miu_p*U_nom[0,i]+U_nom[1,i])]
+    args.ubg += [cs.inf]
+    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i]]
+    args.lbg += [-(miu_p*U_nom[0,i]-U_nom[1,i])]
+    args.ubg += [cs.inf]
+# cenas = cs.horzcat(*[
+#     miu_p*U_bar[0,:]+U_bar[1,:],
+#     miu_p*U_bar[0,:]-U_bar[1,:]
+# ])
+# opt.g.append(cenas)
+# sys.exit(1)
 for i in range(N-1):
     ## ---- Add States to optimization variables ---
     w += [X_bar[:,i]]
     lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
     ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-    w0 += [X0[:,i]]
+    w0 += [X_nom[:,i]]
     ## ---- Add Actions to optimization variables ---
     # actions
     w += [U_bar[:,i]]
@@ -196,16 +204,17 @@ for i in range(N-1):
 w += [X_bar[:,-1]]
 lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
 ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
-w0 += [X0[:,-1]]
+w0 += [X_nom[:,-1]]
 ## ---- Create solver ----
-prob = {'f': Cost, 'x': cs.vertcat(*w), 'g': cs.vertcat(*g)}
+prob = {'f': opt.f, 'x': cs.vertcat(*w), 'g': cs.vertcat(*opt.g)}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #solver = cs.nlpsol('solver', 'snopt', prob)
 #solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
 # solver = cs.qpsol('solver', 'gurobi', prob)
 ## ---- Solve optimization problem ----
-sol = solver(x0=cs.vertcat(*w0), lbx=lbw, ubx=ubw, lbg=lbg, ubg=ubg)
+sol = solver(x0=cs.vertcat(*w0), lbx=lbw, ubx=ubw, lbg=args.lbg, ubg=args.ubg)
 w_opt = sol['x']
+my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*w), w_opt)
 ## ---- Compute actual trajectory and controls ----
 X_bar_opt = cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7]).T
 U_bar_opt = cs.horzcat(w_opt[4::7],w_opt[5::7],w_opt[6::7]).T
@@ -213,7 +222,6 @@ X_bar_opt = np.array(X_bar_opt)
 U_bar_opt = np.array(U_bar_opt)
 X_opt = X_bar_opt + X_nom
 U_opt = U_bar_opt + U_nom
-#sys.exit(1)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -242,8 +250,10 @@ axs[1].set_title('Angles of pusher and Slider')
 axs[1].grid()
 #  -------------------------------------------------------------------
 ts = np.linspace(0, T, N-1)
-axs[2].plot(ts, U_opt[0,:], color='b', label='norm')
-axs[2].plot(ts, U_opt[1,:], color='g', label='tan')
+axs[2].plot(ts, U_nom[0,:], 'b', label='norm nom')
+axs[2].plot(ts, U_bar_opt[0,:], '--g', label='norm bar')
+axs[2].plot(ts, U_nom[1,:], 'r', label='tan nom')
+axs[2].plot(ts, U_bar_opt[1,:], '--y', label='tan bar')
 handles, labels = axs[2].get_legend_handles_labels()
 axs[2].legend(handles, labels)
 axs[2].set_xlabel('time [s]')

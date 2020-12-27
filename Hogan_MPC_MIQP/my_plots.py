@@ -74,3 +74,16 @@ def plot_nominal_traj(x_data, y_data,
     ax.set_xlabel('x [m]')
     ax.set_ylabel('y [m]')
     return fig, ax
+
+## Plot sparsity pattern
+#  -------------------------------------------------------------------
+def plot_sparsity(constraints, var, values):
+    # get sparcity pattern
+    sparsity_mat = np.array(cs.DM(cs.substitute(cs.jacobian(constraints, var), var, values)))
+    # plot sparcity pattern
+    fig, ax = plt.subplots()
+    ax.spy(sparsity_mat)
+    ax.xaxis.tick_bottom()
+    ax.set_title('Sparsity of the constraint Jacobian')
+    ax.set_xlabel('decision variables')
+    ax.set_ylabel('constraints')
