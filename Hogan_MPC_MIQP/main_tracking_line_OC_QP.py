@@ -35,7 +35,8 @@ miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
-show_anim = True
+x_init = [-0.01, 0.03, 30*(np.pi/180.), 0] # initial state
+show_anim = False
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -129,56 +130,65 @@ U_nom = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-opt = my_opt.OptVars()
 ## ---- Input variables ---
-X_bar = cs.SX.sym('x_bar', 4, N)
-U_bar = cs.SX.sym('u_bar', 3, N-1)
-## ---- Optimization objective ---
+x_bar = cs.SX.sym('x_bar', N_x)
+x_bar_next = cs.SX.sym('x_bar_next', N_x)
+u_bar = cs.SX.sym('u_bar', N_u)
+X_bar = cs.SX.sym('X_bar', N_x, N)
+U_bar = cs.SX.sym('U_bar', N_u, N-1)
+## ---- Define Optimization objective ---
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
 cost_f = cs.Function('cost', [x, u], [cs.dot(x,cs.mtimes(Qcost,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_F = cost_f.map(N-1)
-# define cost function
-opt.f = cost_f(X_bar[:,0], cs.SX(N_u, 1)) + cs.sum2(cost_F(X_bar[:,1:], U_bar))
-# sys.exit(1)
-# Cost = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
-# for i in range(N-1):
-#     Cost += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
+## ---- Define Dynamic constraints ----
+dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar], 
+        [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
+dyn_err_F = dyn_err_f.map(N-1)
+## ---- Define Control constraints ----
+fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
+fric_cone_C = fric_cone_c.map(N-1)
 ## ---- Initialize variables for optimization problem ---
+opt = my_opt.OptVars()
+# Declare cost function
+opt.f = cost_f(X_bar[:,0], cs.SX(N_u, 1)) + cs.sum2(cost_F(X_bar[:,1:], U_bar))
+# Declare Constraints
+opt.g = cs.horzcat(
+        *(X_bar[:,0]+X_nom[:,0]-x_init).elements(), # initial state condition
+        *cs.vertcat(
+            dyn_err_F(X_nom[:,0:-1], U_nom, X_bar[:,0:-1], X_bar[:,1:], U_bar), # dynamics
+            fric_cone_C(U_bar) # friction cone
+        ).elements()
+        # *dyn_err_F(X_nom[:,0:-1], U_nom, X_bar[:,0:-1], X_bar[:,1:], U_bar).elements(), # dynamics
+        # *fric_cone_C(U_bar).elements() # friction cone
+)
+## ---- Initialize arguments for optimization problem ---
 args = my_opt.OptArgs()
+# Constraint lower bounds
+args.lbg = cs.horzcat(
+        *cs.DM.zeros(N_x,1).elements(),
+        *cs.vertcat(
+            cs.DM.zeros(N_x,N-1),
+            (-fric_cone_C(U_nom))
+        ).elements()
+        # *cs.DM.zeros(N_x,N-1).elements(),
+        # *(-fric_cone_C(U_nom)).elements()
+).elements()
+# Constraint upper bounds
+args.ubg = cs.horzcat(
+        *cs.DM.zeros(N_x,1).elements(),
+        *cs.vertcat(
+            cs.DM.zeros(N_x,N-1),
+            cs.DM_inf(2, N-1)
+        ).elements()
+        # *cs.DM.zeros(N_x,N-1).elements(),
+        # *cs.DM_inf(2, N-1).elements()
+).elements()
+#-----------------------
 w=[]
 lbw = []
 ubw = []
 w0=[]
-opt.g = []
-args.lbg = []
-args.ubg = []
-## ---- Initial Conditions ----
-x0 = [-0.01, 0.03, 30*(np.pi/180.), 0]
-opt.g += [X_bar[:,0]+X_nom[:,0]-x0]
-args.lbg += [0, 0, 0, 0]
-args.ubg += [0, 0, 0, 0]
-for i in range(N-1):
-    ## ---- Dynamic constraints ----
-    Ai = A_func(X_nom[:,i], U_nom[:,i])
-    Bi = B_func(X_nom[:,i], U_nom[:,i])
-    opt.g += [X_bar[:,i+1]-X_bar[:,i]-dt*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
-    args.lbg += [0, 0, 0, 0]
-    args.ubg += [0, 0, 0, 0]
-for i in range(N-1):
-    ## ---- Control constraints ----
-    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i]]
-    args.lbg += [-(miu_p*U_nom[0,i]+U_nom[1,i])]
-    args.ubg += [cs.inf]
-    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i]]
-    args.lbg += [-(miu_p*U_nom[0,i]-U_nom[1,i])]
-    args.ubg += [cs.inf]
-# cenas = cs.horzcat(*[
-#     miu_p*U_bar[0,:]+U_bar[1,:],
-#     miu_p*U_bar[0,:]-U_bar[1,:]
-# ])
-# opt.g.append(cenas)
-# sys.exit(1)
 for i in range(N-1):
     ## ---- Add States to optimization variables ---
     w += [X_bar[:,i]]
@@ -206,7 +216,7 @@ lbw += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
 ubw += [cs.inf, cs.inf, cs.inf, cs.inf]
 w0 += [X_nom[:,-1]]
 ## ---- Create solver ----
-prob = {'f': opt.f, 'x': cs.vertcat(*w), 'g': cs.vertcat(*opt.g)}
+prob = {'f': opt.f, 'x': cs.vertcat(*w), 'g': opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #solver = cs.nlpsol('solver', 'snopt', prob)
 #solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
@@ -214,7 +224,7 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 ## ---- Solve optimization problem ----
 sol = solver(x0=cs.vertcat(*w0), lbx=lbw, ubx=ubw, lbg=args.lbg, ubg=args.ubg)
 w_opt = sol['x']
-my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*w), w_opt)
+my_plots.plot_sparsity(opt.g, cs.vertcat(*w), w_opt)
 ## ---- Compute actual trajectory and controls ----
 X_bar_opt = cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7]).T
 U_bar_opt = cs.horzcat(w_opt[4::7],w_opt[5::7],w_opt[6::7]).T
@@ -224,43 +234,43 @@ X_opt = X_bar_opt + X_nom
 U_opt = U_bar_opt + U_nom
 #  -------------------------------------------------------------------
 
-# Plot Optimization Results
-#  -------------------------------------------------------------------
-fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
-#  -------------------------------------------------------------------
-ts = np.linspace(0, T, N)
-axs[0].plot(ts, X_nom[0,:], 'b', label='x nom')
-axs[0].plot(ts, X_opt[0,:], '--g', label='x opt')
-axs[0].plot(ts, X_nom[1,:], 'r', label='y nom')
-axs[0].plot(ts, X_opt[1,:], '--y', label='y opt')
-handles, labels = axs[0].get_legend_handles_labels()
-axs[0].legend(handles, labels)
-axs[0].set_ylabel('position [m]')
-axs[0].set_title('Slider CoM')
-axs[0].grid()
-#  -------------------------------------------------------------------
-axs[1].plot(ts, X_nom[2,:]*(180/np.pi), 'b', label='slider nom')
-axs[1].plot(ts, X_opt[2,:]*(180/np.pi), '--g', label='slider opt')
-axs[1].plot(ts, X_nom[3,:]*(180/np.pi), 'r', label='pusher nom')
-axs[1].plot(ts, X_opt[3,:]*(180/np.pi), '--y', label='pusher opt')
-handles, labels = axs[1].get_legend_handles_labels()
-axs[1].legend(handles, labels)
-axs[1].set_ylabel('angles [degrees]')
-axs[1].set_title('Angles of pusher and Slider')
-axs[1].grid()
-#  -------------------------------------------------------------------
-ts = np.linspace(0, T, N-1)
-axs[2].plot(ts, U_nom[0,:], 'b', label='norm nom')
-axs[2].plot(ts, U_bar_opt[0,:], '--g', label='norm bar')
-axs[2].plot(ts, U_nom[1,:], 'r', label='tan nom')
-axs[2].plot(ts, U_bar_opt[1,:], '--y', label='tan bar')
-handles, labels = axs[2].get_legend_handles_labels()
-axs[2].legend(handles, labels)
-axs[2].set_xlabel('time [s]')
-axs[2].set_ylabel('vel [m/s]')
-axs[2].set_title('Puhser control vel')
-axs[2].grid()
-#  -------------------------------------------------------------------
+# # Plot Optimization Results
+# #  -------------------------------------------------------------------
+# fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
+# #  -------------------------------------------------------------------
+# ts = np.linspace(0, T, N)
+# axs[0].plot(ts, X_nom[0,:], 'b', label='x nom')
+# axs[0].plot(ts, X_opt[0,:], '--g', label='x opt')
+# axs[0].plot(ts, X_nom[1,:], 'r', label='y nom')
+# axs[0].plot(ts, X_opt[1,:], '--y', label='y opt')
+# handles, labels = axs[0].get_legend_handles_labels()
+# axs[0].legend(handles, labels)
+# axs[0].set_ylabel('position [m]')
+# axs[0].set_title('Slider CoM')
+# axs[0].grid()
+# #  -------------------------------------------------------------------
+# axs[1].plot(ts, X_nom[2,:]*(180/np.pi), 'b', label='slider nom')
+# axs[1].plot(ts, X_opt[2,:]*(180/np.pi), '--g', label='slider opt')
+# axs[1].plot(ts, X_nom[3,:]*(180/np.pi), 'r', label='pusher nom')
+# axs[1].plot(ts, X_opt[3,:]*(180/np.pi), '--y', label='pusher opt')
+# handles, labels = axs[1].get_legend_handles_labels()
+# axs[1].legend(handles, labels)
+# axs[1].set_ylabel('angles [degrees]')
+# axs[1].set_title('Angles of pusher and Slider')
+# axs[1].grid()
+# #  -------------------------------------------------------------------
+# ts = np.linspace(0, T, N-1)
+# axs[2].plot(ts, U_nom[0,:], 'b', label='norm nom')
+# axs[2].plot(ts, U_bar_opt[0,:], '--g', label='norm bar')
+# axs[2].plot(ts, U_nom[1,:], 'r', label='tan nom')
+# axs[2].plot(ts, U_bar_opt[1,:], '--y', label='tan bar')
+# handles, labels = axs[2].get_legend_handles_labels()
+# axs[2].legend(handles, labels)
+# axs[2].set_xlabel('time [s]')
+# axs[2].set_ylabel('vel [m/s]')
+# axs[2].set_title('Puhser control vel')
+# axs[2].grid()
+# #  -------------------------------------------------------------------
 
 # Animation of Nominal Trajectory
 #  -------------------------------------------------------------------

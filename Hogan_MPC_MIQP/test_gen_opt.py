@@ -87,7 +87,10 @@ opt.f = cs.sum2(cost_F(x_nom[:,0:-1], dx_nom, u_nom))
 # define optimization variables
 opt.x = cs.vertcat(*u_nom.elements())
 # define Sticking constraint
-opt.g = cs.horzcat(*[miu_p*u_nom[0,:]-u_nom[1,:], miu_p*u_nom[0,:]+u_nom[1,:]])
+opt.g = cs.horzcat(*[
+    miu_p*u_nom[0,:]-u_nom[1,:], 
+    miu_p*u_nom[0,:]+u_nom[1,:]
+])
 #  -------------------------------------------------------------------
 
 ## Generating solver
@@ -151,7 +154,7 @@ axs[2].grid()
 axs[3].plot(ts, np.array(cost_opt), color='b', label='cost')
 axs[3].set_xlabel('time [s]')
 axs[3].set_ylabel('cost ')
-axs[3].set_title('cost along traj. - total: ' + str(total_cost_opt))
+axs[3].set_title('cost along traj.')
 axs[3].grid()
 #  -------------------------------------------------------------------
 
