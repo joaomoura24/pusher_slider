@@ -203,6 +203,7 @@ X_bar_opt = np.array(cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7])
 U_bar_opt = np.array(cs.horzcat(w_opt[4::7],w_opt[5::7],w_opt[6::7]).T)
 X_opt = X_bar_opt + X_nom
 U_opt = U_bar_opt + U_nom
+cost_opt = cost_F(X_bar_opt[:,0:-1], U_bar_opt).T
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -237,10 +238,15 @@ axs[2].plot(ts, U_nom[1,:], 'r', label='tan nom')
 axs[2].plot(ts, U_bar_opt[1,:], '--y', label='tan bar')
 handles, labels = axs[2].get_legend_handles_labels()
 axs[2].legend(handles, labels)
-axs[2].set_xlabel('time [s]')
 axs[2].set_ylabel('vel [m/s]')
 axs[2].set_title('Puhser control vel')
 axs[2].grid()
+#  -------------------------------------------------------------------
+axs[3].plot(ts, np.array(cost_opt), color='b', label='cost')
+axs[3].set_xlabel('time [s]')
+axs[3].set_ylabel('cost ')
+axs[3].set_title('cost along traj.')
+axs[3].grid()
 #  -------------------------------------------------------------------
 
 # Animation of Nominal Trajectory
