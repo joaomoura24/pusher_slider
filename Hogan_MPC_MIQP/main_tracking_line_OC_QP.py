@@ -10,14 +10,9 @@
 ## Import Libraries
 #  -------------------------------------------------------------------
 import numpy as np
-import numpy.matlib as nplib
-from scipy.integrate import dblquad 
 import casadi as cs
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as patches
 import matplotlib.animation as animation
-import matplotlib.transforms as transforms
 import sys
 #  -------------------------------------------------------------------
 import my_dynamics

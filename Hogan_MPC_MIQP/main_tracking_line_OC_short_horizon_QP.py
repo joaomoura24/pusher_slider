@@ -20,6 +20,11 @@ import matplotlib.animation as animation
 import matplotlib.transforms as transforms
 import sys
 #  -------------------------------------------------------------------
+import my_dynamics
+import my_trajectories
+import my_plots
+import my_opt
+#  -------------------------------------------------------------------
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
@@ -63,6 +68,19 @@ x = cs.SX.sym('x', N_x)
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider
 u = cs.SX.sym('u', N_u)
+# b - dynamic parameters
+# b[0] - slider lenght [m]
+# b[1] - radious of the pusher [m]
+beta = [a, r_pusher]
+#  -------------------------------------------------------------------
+
+## Build Motion Model
+#  -------------------------------------------------------------------
+R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_R
+#  -------------------------------------------------------------------
+p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
+#  -------------------------------------------------------------------
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Define structures for optimization variables and optimization arguments
@@ -81,34 +99,10 @@ class OptArgs():
     ubx = None # upper bound for optimization variables
 #  -------------------------------------------------------------------
 
-## Build Motion Model
-#  -------------------------------------------------------------------
-c = m_max/f_max
-L = cs.SX.sym('L', cs.Sparsity.diag(3))
-L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
-ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
-R = cs.SX(3,3)
-R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
-R_func = cs.Function('R', [x], [R])
-xc = -a/2; yc = (a/2)*cs.sin(x[3])
-Jc = cs.SX(2,3)
-Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-B = cs.SX(Jc.T)
-#  -------------------------------------------------------------------
-rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
-p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
-#  -------------------------------------------------------------------
-f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
-f_func = cs.Function('f', [x,u], [f])
-#  -------------------------------------------------------------------
-
 ## Compute Jacobians
 #  -------------------------------------------------------------------
-A = cs.jacobian(f, x)#[0:3,0:3]
-A_func = cs.Function('A', [x,u], [A])
-B = cs.jacobian(f, u)#[0:3,0:2]
-B_func = cs.Function('B', [x,u], [B])
+A_func = cs.Function('A_func', [x,u], [cs.jacobian(f_func(x,u), x)], ['x', 'u'], ['A'])
+B_func = cs.Function('B_func', [x,u], [cs.jacobian(f_func(x,u), u)], ['x', 'u'], ['B'])
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory (line)
@@ -333,7 +327,7 @@ def init():
 def animate(i, slider, pusher):
     xi = X_opt[:,i]
     # distance between centre of square reference corner
-    di=np.array(cs.mtimes(R_func(xi),[-a/2, -a/2, 0]).T)[0]
+    di=np.array(cs.mtimes(R_pusher_func(xi),[-a/2, -a/2, 0]).T)[0]
     # square reference corner
     ci = xi[0:3] + di
     # compute transformation with respect to rotation angle xi[2]
