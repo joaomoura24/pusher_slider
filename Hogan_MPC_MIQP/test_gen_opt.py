@@ -59,12 +59,18 @@ p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_qua
 f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
+## Define Control constraints ----
+#  -------------------------------------------------------------------
+fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
+fric_cone_C = fric_cone_c.map(N-1)
+#  -------------------------------------------------------------------
+
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.5, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.5, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  ------------------------------------------------------------------
 # stack state and derivative of state
 x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -87,16 +93,20 @@ opt.f = cs.sum2(cost_F(x_nom[:,0:-1], dx_nom, u_nom))
 # define optimization variables
 opt.x = cs.vertcat(*u_nom.elements())
 # define Sticking constraint
-opt.g = cs.horzcat(*[
-    miu_p*u_nom[0,:]-u_nom[1,:], 
-    miu_p*u_nom[0,:]+u_nom[1,:]
-])
+# opt.g = cs.horzcat(*[
+#     miu_p*u_nom[0,:]-u_nom[1,:], 
+#     miu_p*u_nom[0,:]+u_nom[1,:]
+# ])
+# fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
+# opt.g = 
+opt.g = cs.horzcat(*fric_cone_C(u_nom).elements())
 #  -------------------------------------------------------------------
 
 ## Generating solver
 #  -------------------------------------------------------------------
 prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
+# solver = cs.nlpsol('solver', 'snopt', prob)
 #  -------------------------------------------------------------------
 
 ## Instanciating optimizer arguments

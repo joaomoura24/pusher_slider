@@ -36,7 +36,7 @@ T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
 x_init = [-0.01, 0.03, 30*(np.pi/180.), 0] # initial state
-show_anim = False
+show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -80,12 +80,26 @@ A_func = cs.Function('A_func', [x,u], [cs.jacobian(f_func(x,u), x)], ['x', 'u'],
 B_func = cs.Function('B_func', [x,u], [cs.jacobian(f_func(x,u), u)], ['x', 'u'], ['B'])
 #  -------------------------------------------------------------------
 
+## Define constraint functions
+#  -------------------------------------------------------------------
+## ---- Input variables ---
+x_bar = cs.SX.sym('x_bar', N_x)
+x_bar_next = cs.SX.sym('x_bar_next', N_x)
+u_bar = cs.SX.sym('u_bar', N_u)
+## ---- Define Dynamic constraints ----
+dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar], 
+        [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
+## ---- Define Control constraints ----
+fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
+fric_cone_C = fric_cone_c.map(N-1)
+#  -------------------------------------------------------------------
+
 ## Generate Nominal Trajectory (line)
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom, dX_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -105,7 +119,7 @@ opt.f = cs.sum2(cost_F(X_nom[:,0:-1], dX_nom, u_nom))
 # define optimization variables
 opt.x = cs.vertcat(*u_nom.elements())
 # define Sticking constraint
-opt.g = cs.horzcat(*[miu_p*u_nom[0,:]-u_nom[1,:], miu_p*u_nom[0,:]+u_nom[1,:]])
+opt.g = cs.horzcat(*fric_cone_C(u_nom).elements())
 #  -------------------------------------------------------------------
 # Generating solver
 prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
@@ -114,7 +128,7 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 # Instanciating optimizer arguments
 args = my_opt.OptArgs()
 # initial condition for opt var
-args.x0 = [0.0]*((N-1)*3)
+args.x0 = [0.0]*((N-1)*N_u)
 # opt var boundaries
 args.lbx = [-cs.inf, -cs.inf, 0.0]*(N-1)
 args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
@@ -130,10 +144,6 @@ U_nom = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-## ---- Input variables ---
-x_bar = cs.SX.sym('x_bar', N_x)
-x_bar_next = cs.SX.sym('x_bar_next', N_x)
-u_bar = cs.SX.sym('u_bar', N_u)
 X_bar = cs.SX.sym('X_bar', N_x, N)
 U_bar = cs.SX.sym('U_bar', N_u, N-1)
 ## ---- Define Optimization objective ---
@@ -141,11 +151,6 @@ Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
 cost_f = cs.Function('cost', [x, u], [cs.dot(x,cs.mtimes(Qcost,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_F = cost_f.map(N-1)
-## ---- Define Dynamic constraints ----
-dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar], 
-        [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
-## ---- Define Control constraints ----
-fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
 ## ---- Initialize optimization and argument variables ---
 opt = my_opt.OptVars()
 args = my_opt.OptArgs()
@@ -172,24 +177,23 @@ args.lbx = []
 args.ubx = []
 for i in range(N-1):
     ## ---- Add States to optimization variables ---
-    opt.x += [X_bar[:,i]]
+    opt.x    += [X_bar[:,i]]
     args.lbx += [-cs.inf]*N_x
     args.ubx += [cs.inf]*N_x
-    args.x0 += [X_nom[:,i]]
-# for i in range(N-1):
+    args.x0  += [X_nom[:,i]]
     ## ---- Add Actions to optimization variables ---
     # actions: normal vel, tangential vel, relative sliding vel
-    opt.x += [U_bar[:,i]]
+    opt.x    += [U_bar[:,i]]
     args.lbx += [-U_nom[0,i], -cs.inf, U_nom[2,i]]
-    args.ubx += [cs.inf, cs.inf, U_nom[2,i]]
-    args.x0 += [0.0, 0.0, U_nom[2,i]]
+    args.ubx += [cs.inf,       cs.inf, U_nom[2,i]]
+    args.x0  += [0.0,             0.0, U_nom[2,i]]
 ## ---- Add last States to optimization variables ---
 opt.x += [X_bar[:,-1]]
 args.lbx += [-cs.inf]*N_x
 args.ubx += [cs.inf]*N_x
 args.x0 += [X_nom[:,-1]]
 ## ---- Create solver ----
-prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.horzcat(*opt.g)}
+prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g)}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 # solver = cs.nlpsol('solver', 'snopt', prob)
 # solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
