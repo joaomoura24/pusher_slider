@@ -89,7 +89,7 @@ fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_b
 fric_cone_C = fric_cone_c.map(N-1)
 #  -------------------------------------------------------------------
 
-## Generate Nominal Trajectory (line)
+## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
