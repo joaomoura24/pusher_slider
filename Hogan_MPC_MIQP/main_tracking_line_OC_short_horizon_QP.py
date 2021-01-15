@@ -44,6 +44,7 @@ u_init_val = [0.0, 0.0, 0.0]
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
+N_xu = N_x + N_u # number of optimization variables
 N = T*freq # total number of iterations
 dt = 1.0/freq # time interval of each iteration
 #  -------------------------------------------------------------------
@@ -78,22 +79,6 @@ p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_qua
 f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
-## Define structures for optimization variables and optimization arguments
-#  -------------------------------------------------------------------
-class OptVars():
-    x = None # optimization independent variables
-    g = None # optimization equality constraints
-    p = None # optimization parameters
-    f = None # optimization cost
-class OptArgs():
-    x0 = None # initial guess for optimization independent varibles
-    p = None # parameters
-    lbg = None # lower bound for for constraint g
-    ubg = None # upper bound for the constraint g
-    lbx = None # lower bound for optimization variables
-    ubx = None # upper bound for optimization variables
-#  -------------------------------------------------------------------
-
 ## Compute Jacobians
 #  -------------------------------------------------------------------
 A_func = cs.Function('A_func', [x,u], [cs.jacobian(f_func(x,u), x)], ['x', 'u'], ['A'])
@@ -113,19 +98,6 @@ dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar],
 fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
 fric_cone_C = fric_cone_c.map(N-1)
 #  -------------------------------------------------------------------
-
-# ## Generate Nominal Trajectory (line)
-# #  -------------------------------------------------------------------
-# # constant input and initial state
-# u_const = cs.SX(N_u,1); u_const[0] = 0.05
-# #  -------------------------------------------------------------------
-# t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
-# dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
-# F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
-# X_nom_val = F(x0=[0, 0, 0, 0])['xf']
-# U_nom_val = cs.repmat(u_const, 1, N-1)
-# U_nom_val = np.array(cs.DM(U_nom_val))
-# #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
@@ -177,7 +149,7 @@ U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 
 ## Compute argumens for the entire nominal trajectory
 #  -------------------------------------------------------------------
-ARGS_NOM = OptArgs()
+ARGS_NOM = my_opt.OptArgs()
 ## ---- Initialize variables for optimization problem ---
 ARGS_NOM.lbg = []
 ARGS_NOM.ubg = []
@@ -186,33 +158,25 @@ ARGS_NOM.ubx = []
 ARGS_NOM.p = []
 for i in range(N-1):
     ## ---- Dynamic constraints ----
-    ARGS_NOM.lbg += [0, 0, 0, 0]
-    ARGS_NOM.ubg += [0, 0, 0, 0]
+    ARGS_NOM.lbg += [0]*N_x
+    ARGS_NOM.ubg += [0]*N_x
     ## ---- Control constraints ----
-    ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
-    ARGS_NOM.ubg += [cs.inf]
-    ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]-U_nom_val[1,i])]
-    ARGS_NOM.ubg += [cs.inf]
+    ARGS_NOM.lbg += (-fric_cone_c(U_nom_val[:,i])).elements()
+    ARGS_NOM.ubg += [cs.inf]*2
     ## ---- Add States to optimization variables ---
-    ARGS_NOM.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
-    ARGS_NOM.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
+    ARGS_NOM.lbx += [-cs.inf]*N_x
+    ARGS_NOM.ubx += [cs.inf]*N_x
     ## ---- Add Actions to optimization variables ---
-    # normal vel
-    ARGS_NOM.lbx += [-U_nom_val[0,i]]
-    ARGS_NOM.ubx += [cs.inf]
-    # tangential vel
-    ARGS_NOM.lbx += [-cs.inf]
-    ARGS_NOM.ubx += [cs.inf]
-    # relative sliding vel
-    ARGS_NOM.lbx += [U_nom_val[2,i]]
-    ARGS_NOM.ubx += [U_nom_val[2,i]]
+    # [normal vel, tangential vel, relative sliding vel]
+    ARGS_NOM.lbx += [-U_nom_val[0,i], -cs.inf, U_nom_val[2,i]]
+    ARGS_NOM.ubx += [cs.inf, cs.inf, U_nom_val[2,i]]
     ## ---- Set nominal trajectory as parameters ----
-    ARGS_NOM.p.extend(X_nom_val[:,i])
-    ARGS_NOM.p.extend(U_nom_val[:,i])
+    ARGS_NOM.p += X_nom_val[:,i].tolist()
+    ARGS_NOM.p += U_nom_val[:,i].tolist()
 ## ---- Add last States to optimization variables ---
-ARGS_NOM.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
-ARGS_NOM.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
-ARGS_NOM.p.extend(X_nom_val[:,-1])
+ARGS_NOM.lbx += [-cs.inf]*N_x
+ARGS_NOM.ubx += [cs.inf]*N_x
+ARGS_NOM.p += X_nom_val[:,-1].tolist()
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -230,13 +194,15 @@ u_init = cs.SX.sym('u0', N_u)
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-opt = OptVars()
-## ---- Set optimization objective ----------
+## ---- Define Optimization objective ---
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
-opt.f = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
-for i in range(N_MPC-1):
-    opt.f += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
+cost_f = cs.Function('cost', [x, u], [cs.dot(x,cs.mtimes(Qcost,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
+cost_F = cost_f.map(N_MPC-1)
+## ---- Initialize optimization and argument variables ---
+opt = my_opt.OptVars()
+## ---- cost function ----
+opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost_f(X_bar[:,-1], cs.SX(N_u, 1)) 
 ## ---- Set optimization variables ----
 opt.x = []
 for i in range(N_MPC-1):
@@ -244,24 +210,20 @@ for i in range(N_MPC-1):
     opt.x.extend(U_bar[:,i].elements())
 opt.x.extend(X_bar[:,-1].elements())
 ## ---- Set optimzation constraints ----
-opt.g = []
-opt.g.extend([X_bar[:,0]+X_nom[:,0]-x_init]) ## Initial Conditions
+opt.g = (X_bar[:,0]+X_nom[:,0]-x_init).elements() ## Initial Conditions
 for i in range(N_MPC-1):
-    ## Dynamic constraints
-    Ai = A_func(X_nom[:,i], U_nom[:,i])
-    Bi = B_func(X_nom[:,i], U_nom[:,i])
-    opt.g.extend([X_bar[:,i+1]-X_bar[:,i]-dt*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))])
-    ## Control constraints
-    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i]]
-    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i]]
+    ## ---- dynamics constraint ----
+    opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
+    ## ---- friction cone constraint ----
+    opt.g += fric_cone_c(U_bar[:,i]).elements()
 ## ---- Set optimization parameters ----
-opt.p = []
-opt.p.extend(x_init.elements())
-opt.p.extend(u_init.elements())
+# opt.p = []
+opt.p = x_init.elements()
+opt.p += u_init.elements()
 for i in range(N_MPC-1):
-    opt.p.extend(X_nom[:,i].elements())
-    opt.p.extend(U_nom[:,i].elements())
-opt.p.extend(X_nom[:,-1].elements())
+    opt.p += X_nom[:,i].elements()
+    opt.p += U_nom[:,i].elements()
+opt.p += X_nom[:,-1].elements()
 ## ---- Create solver ----
 prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
 solver = cs.nlpsol('solver', 'ipopt', prob)
@@ -272,43 +234,38 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 
 ## Set arguments and solve
 #  -------------------------------------------------------------------
-args = OptArgs()
+args = my_opt.OptArgs()
 # Indexing
 idx = 0
-idx_x_i = idx*(N_x+N_u)
-idx_x_f = (idx+N_MPC-1)*(N_x+N_u)+N_x
+idx_x_i = idx*N_xu
+idx_x_f = (idx+N_MPC-1)*N_xu+N_x
 # warm start
 args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
 # optimization bounderies
 args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
 args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
 ## parameters
-args.p = []
-args.p.extend(x_init_val)
-args.p.extend(u_init_val)
-args.p.extend(ARGS_NOM.p[idx_x_i:idx_x_f])
+args.p = x_init_val
+args.p += u_init_val
+args.p += ARGS_NOM.p[idx_x_i:idx_x_f]
 ## constraints bounderies
 idx_g_i = idx*6
 idx_g_f = (idx+N_MPC-1)*6
-args.lbg = []
-args.ubg = []
 # initial state constraint
-args.lbg += [0, 0, 0, 0]
-args.ubg += [0, 0, 0, 0]
+args.lbg = [0]*N_x
+args.ubg = [0]*N_x
 # dynamics and friction constraints
-args.lbg.extend(ARGS_NOM.lbg[idx_g_i:idx_g_f])
-args.ubg.extend(ARGS_NOM.ubg[idx_g_i:idx_g_f])
+args.lbg += ARGS_NOM.lbg[idx_g_i:idx_g_f]
+args.ubg += ARGS_NOM.ubg[idx_g_i:idx_g_f]
 ## ---- Solve the optimization ----
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
 x_opt = sol['x']
+my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), x_opt)
 ## ---- Compute actual trajectory and controls ----
-X_bar_opt = np.array(cs.horzcat(x_opt[0::7],x_opt[1::7],x_opt[2::7],x_opt[3::7]).T)
-U_bar_opt = np.array(cs.horzcat(x_opt[4::7],x_opt[5::7],x_opt[6::7]).T)
-X_bar_opt = np.array(X_bar_opt)
-U_bar_opt = np.array(U_bar_opt)
+X_bar_opt = np.array(cs.horzcat(x_opt[0::N_xu],x_opt[1::N_xu],x_opt[2::N_xu],x_opt[3::N_xu]).T)
+U_bar_opt = np.array(cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu]).T)
 X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
 U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
-#sys.exit(1)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results

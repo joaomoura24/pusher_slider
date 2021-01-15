@@ -163,7 +163,7 @@ for i in range(N-1):
 # for i in range(N-1):
     ## ---- friction cone constraint ----
     opt.g += fric_cone_c(U_bar[:,i]).elements()
-    args.lbg.extend(-fric_cone_c(U_nom[:,i]).T.full()[0])
+    args.lbg += (-fric_cone_c(U_nom[:,i])).elements()
     args.ubg += [cs.inf]*2
 #-----------------------
 opt.x = []
