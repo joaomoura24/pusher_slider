@@ -37,16 +37,18 @@ miu_g = 0.35 # coeficient of friction between slider and table
 miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 10 # time of the simulation is seconds
 freq = 50 # numer of increments per second
-r_pusher = 0.005 # radious of the cilindrical pusher in meter
+r_pusher = 0.01 # radious of the cilindrical pusher in meter
 N_MPC = 200 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
+show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
 N_xu = N_x + N_u # number of optimization variables
 N = T*freq # total number of iterations
 dt = 1.0/freq # time interval of each iteration
+T_MPC = N_MPC*dt
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -314,54 +316,30 @@ axs[3].set_title('cost along traj.')
 axs[3].grid()
 #  -------------------------------------------------------------------
 
-# Animation of Nominal Trajectory
+# Animation
 #  -------------------------------------------------------------------
-# set up the figure and subplot
-fig_ani = plt.figure()
-fig_ani.canvas.set_window_title('Matplotlib Animation')
-ax_ani = fig_ani.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(-0.1,0.6), ylim=(-0.1,0.1) \
-)
-# draw nominal trajectory
-ax_ani.plot(X_nom_val[0,:], X_nom_val[1,:], color='red', linewidth=2.0, linestyle='dashed')
-ax_ani.plot(X_nom_val[0,0], X_nom_val[1,0], X_nom_val[0,-1], X_nom_val[1,-1], marker='o', color='red')
-ax_ani.grid();
-#ax_ani.set_axisbelow(True)
-ax_ani.set_aspect('equal', 'box')
-ax_ani.set_title('Pusher-Slider Motion Animation')
-slider = patches.Rectangle([0,0], a, a)
-pusher = patches.Circle([0,0], radius=r_pusher, color='black')
-def init():
-    ax_ani.add_patch(slider)
-    ax_ani.add_patch(pusher)
-    return []
-    #return slider,
-def animate(i, slider, pusher):
-    xi = X_opt[:,i]
-    # distance between centre of square reference corner
-    di=np.array(cs.mtimes(R_pusher_func(xi),[-a/2, -a/2, 0]).T)[0]
-    # square reference corner
-    ci = xi[0:3] + di
-    # compute transformation with respect to rotation angle xi[2]
-    trans_ax = ax_ani.transData
-    coords = trans_ax.transform(ci[0:2])
-    trans_i = transforms.Affine2D().rotate_around(coords[0], coords[1], xi[2])
-    # Set changes
-    #slider.set_transform(trans_ax+trans_i)
-    slider.set_transform(trans_ax+trans_i)
-    slider.set_xy([ci[0], ci[1]])
-    pusher.set_center(np.array(p_pusher_func(xi)))
-    return []
-#init()
-# call the animation
-ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
-        fargs=(slider,pusher,),
-        frames=N_MPC,
-        interval=T,
-        blit=True, repeat=False)
-## to save animation, uncomment the line below:
-#ani.save('sliding_tracking_line_fullTO_QP.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
-#ani.save('sliding_tracking_line_fullTO_QP.gif', writer='imagemagick', fps=freq)
-#show the animation
+if show_anim:
+#  -------------------------------------------------------------------
+    fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
+    # get slider and pusher patches
+    slider, pusher, path = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+            ax, 
+            p_pusher_func, 
+            R_pusher_func, 
+            X_opt,
+            a, r_pusher)
+    # call the animation
+    ani = animation.FuncAnimation( fig,
+            my_plots.animate_square_slider_and_circle_pusher,
+            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_opt, a, path),
+            frames=N_MPC,
+            interval=T_MPC,
+            blit=True,
+            repeat=False)
+    ## to save animation, uncomment the line below:
+    ## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
+#  -------------------------------------------------------------------
+
+#  -------------------------------------------------------------------
 plt.show()
 #  -------------------------------------------------------------------
