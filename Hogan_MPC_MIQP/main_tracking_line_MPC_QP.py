@@ -25,6 +25,11 @@ import matplotlib.patches as patches
 import matplotlib.animation as animation
 import matplotlib.transforms as transforms
 #  -------------------------------------------------------------------
+import my_dynamics
+import my_trajectories
+import my_plots
+import my_opt
+#  -------------------------------------------------------------------
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
@@ -36,15 +41,14 @@ miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
-N_MPC = 595 # time horizon for the MPC controller
-#N_MPC = 250 # time horizon for the MPC controller
-N_MPC = 35 # time horizon for the MPC controller
+N_MPC = 150 # time horizon for the MPC controller
+# N_MPC = 35 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
-#solver_name = 'ipopt'
-#solver_name = 'snopt'
+# solver_name = 'ipopt'
+# solver_name = 'snopt'
 solver_name = 'gurobi'
-#solver_name = 'qpoases'
+# solver_name = 'qpoases'
 opts_dict = {'print_time': 0}
 no_printing = True
 code_gen = False
@@ -58,7 +62,6 @@ N = T*freq # total number of iterations
 dt = 1.0/freq # sampling time
 N_x = 4
 N_u = 3
-N_var = (N_x+N_u)*N_MPC
 h = 1./freq # time interval of each iteration
 A = a**2 # area of the slider in meter square
 f_max = miu_g*m*g # limit force in Newton
@@ -76,60 +79,35 @@ m_max = miu_g*m*g*int_A/A # limit torque Newton meter
 # x[2] - slider orientation in the global frame
 # x[3] - angle of pusher relative to slider
 x = cs.SX.sym('x', N_x)
+# dx - state vector derivative
+dx = cs.SX.sym('dx', 4)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider
 u = cs.SX.sym('u', N_u)
-#  -------------------------------------------------------------------
-
-## Define structures for optimization variables and optimization arguments
-#  -------------------------------------------------------------------
-class OptVars():
-    x = None # optimization independent variables
-    g = None # optimization equality constraints
-    p = None # optimization parameters
-    f = None # optimization cost
-class OptArgs():
-    x0 = None # initial guess for optimization independent varibles
-    p = None # parameters
-    lbg = None # lower bound for for constraint g
-    ubg = None # upper bound for the constraint g
-    lbx = None # lower bound for optimization variables
-    ubx = None # upper bound for optimization variables
+# b - dynamic parameters
+# b[0] - slider lenght [m]
+# b[1] - radious of the pusher [m]
+beta = [a, r_pusher]
 #  -------------------------------------------------------------------
 
 ## Build Motion Model
 #  -------------------------------------------------------------------
-c = m_max/f_max
-L = cs.SX.sym('L', cs.Sparsity.diag(3))
-L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
-ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
-R = cs.SX(3,3)
-R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
-R_func = cs.Function('R', [x], [R])
-xc = -a/2; yc = (a/2)*cs.sin(x[3])
-Jc = cs.SX(2,3)
-Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-B = cs.SX(Jc.T)
+R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_R
 #  -------------------------------------------------------------------
-rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
-p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
+p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
-f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
-f_func = cs.Function('f', [x,u], [f])
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Compute Jacobians
 #  -------------------------------------------------------------------
-A = cs.jacobian(f, x)#[0:3,0:3]
-A_func = cs.Function('A', [x,u], [A])
-B = cs.jacobian(f, u)#[0:3,0:2]
-B_func = cs.Function('B', [x,u], [B])
+A_func = cs.Function('A_func', [x,u], [cs.jacobian(f_func(x,u), x)], ['x', 'u'], ['A'])
+B_func = cs.Function('B_func', [x,u], [cs.jacobian(f_func(x,u), u)], ['x', 'u'], ['B'])
 #  -------------------------------------------------------------------
 
-## Generate Nominal Trajectory (line)
+## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 # constant input and initial state
 u_const = cs.SX(N_u,1); u_const[0] = 0.05
@@ -144,7 +122,7 @@ U_nom_val = np.array(cs.DM(U_nom_val))
 
 ## Compute argumens for the entire nominal trajectory
 #  -------------------------------------------------------------------
-ARGS_NOM = OptArgs()
+ARGS_NOM = my_opt.OptArgs()
 ## ---- Initialize variables for optimization problem ---
 ARGS_NOM.lbg = []
 ARGS_NOM.ubg = []
@@ -197,7 +175,7 @@ u_init = cs.SX.sym('u0', N_u)
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-opt = OptVars()
+opt = my_opt.OptVars()
 ## ---- Set optimization objective ----------
 #Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Qcost = cs.SX(N_x, N_x); Qcost[0,0] = Qcost[1,1] = 3.0; Qcost[2,2] = 0.01;
@@ -273,7 +251,7 @@ comp_time = np.empty(Nidx)
 #  -------------------------------------------------------------------
 x0 = x_init_val
 u0 = u_init_val
-args = OptArgs()
+args = my_opt.OptArgs()
 for idx in range(Nidx):
     # Indexing
     idx_x_i = idx*(N_x+N_u)
@@ -406,7 +384,7 @@ def init():
 def animate(i, slider, pusher):
     xi = X_plot[:,i]
     # distance between centre of square reference corner
-    di=np.array(cs.mtimes(R_func(xi),[-a/2, -a/2, 0]).T)[0]
+    di=np.array(cs.mtimes(R_pusher_func(xi),[-a/2, -a/2, 0]).T)[0]
     # square reference corner
     ci = xi[0:3] + di
     # compute transformation with respect to rotation angle xi[2]
