@@ -203,9 +203,9 @@ opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost_f(X_bar[:,-1], cs.SX(N_u, 1
 ## ---- Set optimization variables ----
 opt.x = []
 for i in range(N_MPC-1):
-    opt.x.extend(X_bar[:,i].elements())
-    opt.x.extend(U_bar[:,i].elements())
-opt.x.extend(X_bar[:,-1].elements())
+    opt.x += X_bar[:,i].elements()
+    opt.x += U_bar[:,i].elements()
+opt.x += X_bar[:,-1].elements()
 ## ---- Set optimzation constraints ----
 opt.g = (X_bar[:,0]+X_nom[:,0]-x_init).elements() ## Initial Conditions
 for i in range(N_MPC-1):
@@ -214,7 +214,6 @@ for i in range(N_MPC-1):
     ## ---- friction cone constraint ----
     opt.g += fric_cone_c(U_bar[:,i]).elements()
 ## ---- Set optimization parameters ----
-# opt.p = []
 opt.p = x_init.elements()
 opt.p += u_init.elements()
 for i in range(N_MPC-1):
