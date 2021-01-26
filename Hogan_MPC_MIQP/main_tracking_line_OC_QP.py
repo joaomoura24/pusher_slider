@@ -254,7 +254,7 @@ if show_anim:
 #  -------------------------------------------------------------------
     fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
-    slider, pusher, path = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+    slider, pusher, path, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
             R_pusher_func, 

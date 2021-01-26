@@ -33,10 +33,9 @@ import my_opt
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
-g = 9.81 # gravity acceleration constant in meter per second square
+N_x = 4
+N_u = 3
 a = 0.09 # side dimension of the square slider in meters
-m = 0.827 # mass of the slider in kilo grams
-miu_g = 0.35 # coeficient of friction between slider and table
 miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
 freq = 50 # numer of increments per second
@@ -52,23 +51,18 @@ solver_name = 'gurobi'
 opts_dict = {'print_time': 0}
 no_printing = True
 code_gen = False
+show_anim = True
 #  -------------------------------------------------------------------
 ## get string name
 prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(code_gen)
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
-N = T*freq # total number of iterations
 dt = 1.0/freq # sampling time
-N_x = 4
-N_u = 3
-h = 1./freq # time interval of each iteration
-A = a**2 # area of the slider in meter square
-f_max = miu_g*m*g # limit force in Newton
-# Area integral of norm of the distance for a square:
-int_square = lambda a: dblquad(lambda x,y: np.sqrt(x**2 + y**2), -a/2, a/2, -a/2, a/2)[0]
-int_A = int_square(a)
-m_max = miu_g*m*g*int_A/A # limit torque Newton meter
+N = T*freq # total number of iterations
+Nidx = N-N_MPC
+T_MPC = N_MPC*dt
+Tidx = Nidx*dt
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -274,7 +268,6 @@ elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-Nidx = N-N_MPC
 X_plot = np.empty([N_x, Nidx+1])
 U_plot = np.empty([N_u, Nidx])
 X_plot[:,0] = x_init_val
@@ -386,60 +379,30 @@ axs[3].grid()
 plt.show(block=False)
 #  -------------------------------------------------------------------
 
-# Animation of Nominal Trajectory
+# Animation
 #  -------------------------------------------------------------------
-# set up the figure and subplot
-fig_ani = plt.figure()
-fig_ani.canvas.set_window_title('Matplotlib Animation')
-ax_ani = fig_ani.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(-0.05,0.65), ylim=(-0.15,0.15) \
-)
-# draw nominal trajectory
-ax_ani.plot(X_nom_val[0,:], X_nom_val[1,:], color='red', linewidth=2.0, linestyle='dashed')
-ax_ani.plot(X_nom_val[0,0], X_nom_val[1,0], X_nom_val[0,-1], X_nom_val[1,-1], marker='o', color='red')
-ax_ani.grid();
-ax_ani.set_aspect('equal', 'box')
-ax_ani.set_title('Pusher-Slider Motion Animation')
-slider = patches.Rectangle([0,0], a, a)
-pusher = patches.Circle([0,0], radius=r_pusher, color='black')
-# Plot centre of the slider
-#path_future, = ax_ani.plot(X_future[0,:,0], X_future[1,:,0], color='orange', linestyle='dashed')
-path_future, = ax_ani.plot(x_init_val[0], x_init_val[1], color='orange', linestyle='dashed')
-path_past, = ax_ani.plot(x_init_val[0], x_init_val[1], color='orange')
-path_past.set_linewidth(2)
-def init():
-    ax_ani.add_patch(slider)
-    ax_ani.add_patch(pusher)
-    return []
-    #return slider,
-def animate(i, slider, pusher):
-    xi = X_plot[:,i]
-    # distance between centre of square reference corner
-    di=np.array(cs.mtimes(R_pusher_func(xi),[-a/2, -a/2, 0]).T)[0]
-    # square reference corner
-    ci = xi[0:3] + di
-    # compute transformation with respect to rotation angle xi[2]
-    trans_ax = ax_ani.transData
-    coords = trans_ax.transform(ci[0:2])
-    trans_i = transforms.Affine2D().rotate_around(coords[0], coords[1], xi[2])
-    # Plot centre of the slider
-    path_future.set_data(X_future[0,:,i], X_future[1,:,i])
-    path_past.set_data(X_plot[0,0:i], X_plot[1,0:i])
-    # Set changes
-    slider.set_transform(trans_ax+trans_i)
-    slider.set_xy([ci[0], ci[1]])
-    pusher.set_center(np.array(p_pusher_func(xi)))
-    return []
-#init()
-# call the animation
-ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
-        fargs=(slider,pusher,),
-        frames=Nidx,
-        interval=T,
-        blit=True, repeat=False)
-## to save animation, uncomment the line below:
-#ani.save('mpc_TH50.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
-#ani.save('sliding_tracking_line_fullTO_QP.gif', writer='imagemagick', fps=freq)
-#show the animation
+if show_anim:
+#  -------------------------------------------------------------------
+    fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
+    # get slider and pusher patches
+    slider, pusher, path_past, path_future = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+            ax, 
+            p_pusher_func, 
+            R_pusher_func, 
+            X_plot,
+            a, r_pusher)
+    # call the animation
+    ani = animation.FuncAnimation(fig,
+            my_plots.animate_square_slider_and_circle_pusher,
+            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
+            frames=Nidx,
+            interval=Tidx,
+            blit=True,
+            repeat=False)
+    ## to save animation, uncomment the line below:
+    ## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
+#  -------------------------------------------------------------------
+
+#  -------------------------------------------------------------------
 plt.show()
 #  -------------------------------------------------------------------
