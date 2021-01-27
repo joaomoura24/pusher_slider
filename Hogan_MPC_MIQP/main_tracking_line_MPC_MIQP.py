@@ -178,19 +178,6 @@ u_sol = sol['x']
 U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 #  -------------------------------------------------------------------
 
-# ## Generate Nominal Trajectory (line)
-# #  -------------------------------------------------------------------
-# # constant input and initial state
-# u_const = cs.SX(N_u,1); u_const[0] = 0.05
-# #  -------------------------------------------------------------------
-# t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
-# dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
-# F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
-# X_nom_val = F(x0=[0, 0, 0, 0])['xf']
-# U_nom_val = cs.repmat(u_const, 1, N-1)
-# U_nom_val = np.array(cs.DM(U_nom_val))
-# #  -------------------------------------------------------------------
-
 ## Compute argumens for the entire nominal trajectory
 #  -------------------------------------------------------------------
 ARGS_NOM = my_opt.OptArgs()
@@ -202,8 +189,8 @@ ARGS_NOM.ubx = []
 ARGS_NOM.p = []
 for i in range(N-1):
     ## ---- Dynamic constraints ----
-    ARGS_NOM.lbg += [0, 0, 0, 0]
-    ARGS_NOM.ubg += [0, 0, 0, 0]
+    ARGS_NOM.lbg += [0]*N_x
+    ARGS_NOM.ubg += [0]*N_x
     ## ---- State constraints ----
     ARGS_NOM.lbg += [-U_nom_val[2,i]]
     ARGS_NOM.ubg += [cs.inf]
@@ -219,8 +206,8 @@ for i in range(N-1):
     ARGS_NOM.lbg += [-cs.inf]
     ARGS_NOM.ubg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
     ## ---- Add States to optimization variables ---
-    ARGS_NOM.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
-    ARGS_NOM.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
+    ARGS_NOM.lbx += [-cs.inf]*N_x
+    ARGS_NOM.ubx += [cs.inf]*N_x
     ## ---- Add Actions to optimization variables ---
     # normal vel
     ARGS_NOM.lbx += [-U_nom_val[0,i]]
@@ -233,10 +220,10 @@ for i in range(N-1):
     ARGS_NOM.ubx += [cs.inf]
     ## ---- Set nominal trajectory as parameters ----
     ARGS_NOM.p += X_nom_val[:,i].tolist()
-    ARGS_NOM.p.extend(U_nom_val[:,i])
+    ARGS_NOM.p += U_nom_val[:,i].tolist()
 ## ---- Add last States to optimization variables ---
-ARGS_NOM.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
-ARGS_NOM.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
+ARGS_NOM.lbx += [-cs.inf]*N_x
+ARGS_NOM.ubx += [cs.inf]*N_x
 ARGS_NOM.p += X_nom_val[:,-1].tolist()
 #  -------------------------------------------------------------------
 
@@ -280,23 +267,23 @@ for i in range(N_m):
 opt.x = []
 opt.discrete = []
 for i in range(N_MPC-1):
-    opt.x.extend(X_bar[:,i].elements())
+    opt.x += X_bar[:,i].elements()
     opt.discrete += [False]*N_x
-    opt.x.extend(U_bar[:,i].elements())
+    opt.x += U_bar[:,i].elements()
     opt.discrete += [False]*N_u
-opt.x.extend(X_bar[:,-1].elements())
+opt.x += X_bar[:,-1].elements()
 opt.discrete += [False]*N_x
 for i in range(N_m):
-    opt.x.extend(Zm[:,i].elements())
+    opt.x += Zm[:,i].elements()
     opt.discrete += [True]*N_i
 ## ---- Set optimzation constraints ----
 opt.g = []
-opt.g.extend([X_bar[:,0]+X_nom[:,0]-x_init]) ## Initial Conditions
+opt.g += [X_bar[:,0]+X_nom[:,0]-x_init] ## Initial Conditions
 for i in range(N_MPC-1):
     ## Dynamic constraints
     Ai = A_func(X_nom[:,i], U_nom[:,i])
     Bi = B_func(X_nom[:,i], U_nom[:,i])
-    opt.g.extend([X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))])
+    opt.g += [X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
     ## State constraints
     opt.g += [U_bar[2,i] + bigM*Z[2,i]]
     opt.g += [U_bar[2,i] - bigM*Z[1,i]]
@@ -310,12 +297,12 @@ for i in range(N_m):
     opt.g += [cs.sum1(Zm[:,i])]
 ## ---- Set optimization parameters ----
 opt.p = []
-opt.p.extend(x_init.elements())
-opt.p.extend(u_init.elements())
+opt.p += x_init.elements()
+opt.p += u_init.elements()
 for i in range(N_MPC-1):
-    opt.p.extend(X_nom[:,i].elements())
-    opt.p.extend(U_nom[:,i].elements())
-opt.p.extend(X_nom[:,-1].elements())
+    opt.p += X_nom[:,i].elements()
+    opt.p += U_nom[:,i].elements()
+opt.p += X_nom[:,-1].elements()
 ## ---- Set solver options ----
 opts_dict['discrete'] = opt.discrete # add integer variables
 if solver_name == 'gurobi':
@@ -328,8 +315,8 @@ if (solver_name == 'gurobi'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-# Nidx = N-N_MPC
-Nidx = 10
+Nidx = N-N_MPC
+# Nidx = 10
 X_plot = np.empty([N_x, Nidx+1])
 U_plot = np.empty([N_u, Nidx])
 X_plot[:,0] = x_init_val
@@ -356,29 +343,29 @@ for idx in range(Nidx):
     # warm start
     if idx==0:
         args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
-        args.x0.extend(Zm0.flatten('F'))
+        args.x0 += Zm0.flatten('F').tolist()
     else:
         args.x0 = x_opt[6:-1].elements()
-        args.x0.extend(ARGS_NOM.p[(idx_x_f-(N_xu)):idx_x_f])
-        args.x0.extend(x_i.elements())
+        args.x0 += ARGS_NOM.p[(idx_x_f-(N_xu)):idx_x_f]
+        args.x0 += x_i.elements()
     # setting optimization bounderies from nominal traj
     args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
-    args.lbx.extend(Zm_lbx)
+    args.lbx += Zm_lbx.tolist()
     args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
-    args.ubx.extend(Zm_ubx)
+    args.ubx += Zm_ubx.tolist()
     ## setting parameters
     args.p = []
-    args.p.extend(x0)
-    args.p.extend(u0)
-    args.p.extend(ARGS_NOM.p[idx_x_i:idx_x_f])
+    args.p += x0
+    args.p += u0
+    args.p += ARGS_NOM.p[idx_x_i:idx_x_f]
     # initial state constraint
-    args.lbg = [0, 0, 0, 0]
-    args.ubg = [0, 0, 0, 0]
+    args.lbg = [0]*N_x
+    args.ubg = [0]*N_x
     # dynamics and friction constraints
-    args.lbg.extend(ARGS_NOM.lbg[idx_g_i:idx_g_f])
-    args.lbg.extend(Zm_bg)
-    args.ubg.extend(ARGS_NOM.ubg[idx_g_i:idx_g_f])
-    args.ubg.extend(Zm_bg)
+    args.lbg += ARGS_NOM.lbg[idx_g_i:idx_g_f]
+    args.lbg += Zm_bg.tolist()
+    args.ubg += ARGS_NOM.ubg[idx_g_i:idx_g_f]
+    args.ubg += Zm_bg.tolist()
     ## ---- Solve the optimization ----
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
