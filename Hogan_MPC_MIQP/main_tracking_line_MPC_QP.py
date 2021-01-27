@@ -14,16 +14,9 @@ import sys
 import time
 import numpy as np
 import casadi as cs
-#import numpy.matlib as nplib
-from scipy.integrate import dblquad 
-#from sys import path
-#path.append(r"/Users/joaomoura/local/casadi")
 # import casadi
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import matplotlib.patches as patches
 import matplotlib.animation as animation
-import matplotlib.transforms as transforms
 #  -------------------------------------------------------------------
 import my_dynamics
 import my_trajectories
@@ -396,7 +389,7 @@ if show_anim:
             my_plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
             frames=Nidx,
-            interval=Tidx,
+            interval=dt*1000,
             blit=True,
             repeat=False)
     ## to save animation, uncomment the line below:

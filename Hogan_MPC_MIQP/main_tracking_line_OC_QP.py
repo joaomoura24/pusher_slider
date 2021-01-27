@@ -265,7 +265,7 @@ if show_anim:
             my_plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_opt, a, path),
             frames=N,
-            interval=T,
+            interval=dt*1000,
             blit=True,
             repeat=False)
     ## to save animation, uncomment the line below:
