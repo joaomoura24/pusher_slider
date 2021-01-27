@@ -25,6 +25,11 @@ import matplotlib.patches as patches
 import matplotlib.animation as animation
 import matplotlib.transforms as transforms
 #  -------------------------------------------------------------------
+import my_dynamics
+import my_trajectories
+import my_plots
+import my_opt
+#  -------------------------------------------------------------------
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
@@ -32,7 +37,6 @@ N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 N_i = 3 # number of integer variables
 N_g = 10 # number of optimization constraints
-N_xu = N_x + N_u # number of optimization variables
 g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
@@ -43,7 +47,7 @@ freq = 50 # numer of increments per second
 r_pusher = 0.005 # radious of the cilindrical pusher in meter
 Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
 bigM = 500 # big M for the Mixed Integer optimization
-f_lim = 0.3 # limit on the actuations
+f_lim = 0.1 # limit on the actuations
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 solver_name = 'gurobi'
@@ -53,6 +57,7 @@ code_gen = False
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
+N_xu = N_x + N_u # number of optimization variables
 N_MPC = np.sum(Mm) # time horizon for the MPC controller
 N_m = Mm.size
 N = T*freq # total number of iterations
@@ -78,86 +83,117 @@ prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(c
 # x[2] - slider orientation in the global frame
 # x[3] - angle of pusher relative to slider
 x = cs.SX.sym('x', N_x)
+# dx - state vector derivative
+dx = cs.SX.sym('dx', 4)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider
 u = cs.SX.sym('u', N_u)
+# b - dynamic parameters
+# b[0] - slider lenght [m]
+# b[1] - radious of the pusher [m]
+beta = [a, r_pusher]
 # z - modes
 # z[0] - Sticking mode
 # z[1] - Sliding Left mode
 # z[2] - Sliding Right mode
 z = cs.SX.zeros(3,1)
-z[0] = 1
-Zm0 = np.array(cs.DM(cs.repmat(z, 1, N_m)))
-Zm_lbx = np.zeros(N_m*N_i)
-Zm_ubx = np.ones(N_m*N_i)
-Zm_bg = np.ones(N_m)
 #  ------------------------------------------------------------------
-
-## Define structures for optimization variables and optimization arguments
-#  -------------------------------------------------------------------
-class OptVars():
-    x = None # optimization independent variables
-    g = None # optimization equality constraints
-    p = None # optimization parameters
-    f = None # optimization cost
-    discrete = None # flag for indicating integer variables
-class OptArgs():
-    x0 = None # initial guess for optimization independent varibles
-    p = None # parameters
-    lbg = None # lower bound for for constraint g
-    ubg = None # upper bound for the constraint g
-    lbx = None # lower bound for optimization variables
-    ubx = None # upper bound for optimization variables
-#  -------------------------------------------------------------------
 
 ## Build Motion Model
 #  -------------------------------------------------------------------
-c = m_max/f_max
-L = cs.SX.sym('L', cs.Sparsity.diag(3))
-L[0,0] = L[1,1] = 1; L[2,2] = 1/(c**2);
-ctheta = cs.cos(x[2]); stheta = cs.sin(x[2])
-R = cs.SX(3,3)
-R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1;
-R_func = cs.Function('R', [x], [R])
-xc = -a/2; yc = (a/2)*cs.sin(x[3])
-Jc = cs.SX(2,3)
-Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-B = cs.SX(Jc.T)
+R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_R
 #  -------------------------------------------------------------------
-rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
-p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
+p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
-f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,L),cs.mtimes(B,u[0:2])),u[2]))
-f_func = cs.Function('f', [x,u], [f])
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Compute Jacobians
 #  -------------------------------------------------------------------
-A = cs.jacobian(f, x)#[0:3,0:3]
-A_func = cs.Function('A', [x,u], [A])
-B = cs.jacobian(f, u)#[0:3,0:2]
-B_func = cs.Function('B', [x,u], [B])
+A_func = cs.Function('A_func', [x,u], [cs.jacobian(f_func(x,u), x)], ['x', 'u'], ['A'])
+B_func = cs.Function('B_func', [x,u], [cs.jacobian(f_func(x,u), u)], ['x', 'u'], ['B'])
 #  -------------------------------------------------------------------
 
-## Generate Nominal Trajectory (line)
+## Define constraint functions
 #  -------------------------------------------------------------------
-# constant input and initial state
-u_const = cs.SX(N_u,1); u_const[0] = 0.05
+## ---- Input variables ---
+x_bar = cs.SX.sym('x_bar', N_x)
+x_bar_next = cs.SX.sym('x_bar_next', N_x)
+u_bar = cs.SX.sym('u_bar', N_u)
+## ---- Define Dynamic constraints ----
+dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar], 
+        [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
+## ---- Define Control constraints ----
+fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
+fric_cone_C = fric_cone_c.map(N-1)
 #  -------------------------------------------------------------------
-t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
-dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
-F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
-X_nom_val = F(x0=[0, 0, 0, 0])['xf']
-U_nom_val = cs.repmat(u_const, 1, N-1)
-U_nom_val = np.array(cs.DM(U_nom_val))
+
+## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
+x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+#  -------------------------------------------------------------------
+# stack state and derivative of state
+X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+#  ------------------------------------------------------------------
+# control path variables
+u_nom = cs.SX.sym('u_nom', N_u, N-1)
+#  ------------------------------------------------------------------
+# declare cost function
+W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.01]))
+vel_error = dx - f_func(x, u)
+cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
+cost_F = cost_f.map(N-1)
+#  -------------------------------------------------------------------
+opt = my_opt.OptVars()
+# define cost function
+opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom))
+# define optimization variables
+opt.x = cs.vertcat(*u_nom.elements())
+# define Sticking constraint
+opt.g = cs.horzcat(*fric_cone_C(u_nom).elements())
+#  -------------------------------------------------------------------
+# Generating solver
+prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
+solver = cs.nlpsol('solver', 'ipopt', prob)
+#  -------------------------------------------------------------------
+# Instanciating optimizer arguments
+args = my_opt.OptArgs()
+# initial condition for opt var
+args.x0 = [0.0]*((N-1)*N_u)
+# opt var boundaries
+args.lbx = [-cs.inf, -cs.inf, 0.0]*(N-1)
+args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
+# arg for sticking constraint
+args.lbg = [0.0]*((N-1)*2)
+args.ubg = [cs.inf]*((N-1)*2)
+#  -------------------------------------------------------------------
+# Solve optimization problem
+sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
+u_sol = sol['x']
+U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
+#  -------------------------------------------------------------------
+
+# ## Generate Nominal Trajectory (line)
+# #  -------------------------------------------------------------------
+# # constant input and initial state
+# u_const = cs.SX(N_u,1); u_const[0] = 0.05
+# #  -------------------------------------------------------------------
+# t = cs.SX.sym('t'); ts = np.linspace(0, T, N)
+# dae = {'x':x, 't':t, 'ode': f_func(x, u_const)}
+# F = cs.integrator('F', 'cvodes', dae, {'grid':ts, 'output_t0':True})
+# X_nom_val = F(x0=[0, 0, 0, 0])['xf']
+# U_nom_val = cs.repmat(u_const, 1, N-1)
+# U_nom_val = np.array(cs.DM(U_nom_val))
+# #  -------------------------------------------------------------------
 
 ## Compute argumens for the entire nominal trajectory
 #  -------------------------------------------------------------------
-ARGS_NOM = OptArgs()
+ARGS_NOM = my_opt.OptArgs()
 ## ---- Initialize variables for optimization problem ---
 ARGS_NOM.lbg = []
 ARGS_NOM.ubg = []
@@ -196,12 +232,12 @@ for i in range(N-1):
     ARGS_NOM.lbx += [-cs.inf]
     ARGS_NOM.ubx += [cs.inf]
     ## ---- Set nominal trajectory as parameters ----
-    ARGS_NOM.p.extend(X_nom_val[:,i].elements())
+    ARGS_NOM.p += X_nom_val[:,i].tolist()
     ARGS_NOM.p.extend(U_nom_val[:,i])
 ## ---- Add last States to optimization variables ---
 ARGS_NOM.lbx += [-cs.inf, -cs.inf, -cs.inf, -cs.inf]
 ARGS_NOM.ubx += [cs.inf, cs.inf, cs.inf, cs.inf]
-ARGS_NOM.p.extend(X_nom_val[:,-1].elements())
+ARGS_NOM.p += X_nom_val[:,-1].tolist()
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -224,13 +260,13 @@ for i in range(1, N_m):
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-opt = OptVars()
+opt = my_opt.OptVars()
 ## ---- Set optimization objective ----------
 #Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Qcost = cs.SX(N_x, N_x); Qcost[0,0] = Qcost[1,1] = 30.0; Qcost[2,2] = 1.0;
 QcostN = 200*Qcost
 #Rcost = cs.diag(cs.SX([1,1,0.0]))
-Rcost = cs.SX(N_u, N_u); Rcost[0,0] = Rcost[1,1] = 0.5; Rcost[2,2] = 0.1
+Rcost = cs.SX(N_u, N_u); Rcost[0,0] = Rcost[1,1] = Rcost[2,2] = 0.5
 wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 opt.f = cs.dot(X_bar[:,-1],cs.mtimes(QcostN,X_bar[:,-1]))
 for i in range(N_MPC-1):
@@ -288,13 +324,12 @@ if solver_name == 'gurobi':
 prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
 if (solver_name == 'gurobi'):
     solver = cs.qpsol('solver', solver_name, prob, opts_dict)
-## ---- Turn solver into function ----
-#opts = dict(main=True)
 #  -------------------------------------------------------------------
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-Nidx = N-N_MPC
+# Nidx = N-N_MPC
+Nidx = 10
 X_plot = np.empty([N_x, Nidx+1])
 U_plot = np.empty([N_u, Nidx])
 X_plot[:,0] = x_init_val
@@ -302,11 +337,16 @@ X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx)
 #  -------------------------------------------------------------------
 
+z[0] = 1
+Zm0 = np.array(cs.DM(cs.repmat(z, 1, N_m)))
+Zm_lbx = np.zeros(N_m*N_i)
+Zm_ubx = np.ones(N_m*N_i)
+Zm_bg = np.ones(N_m)
 ## Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
 u0 = u_init_val
-args = OptArgs()
+args = my_opt.OptArgs()
 for idx in range(Nidx):
     # Indexing
     idx_x_i = idx*(N_xu)
@@ -372,6 +412,7 @@ for idx in range(Nidx):
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
+ts = np.linspace(0, T, N)
 ts_X = ts[0:Nidx+1]
 ts_U = ts[0:Nidx]
 ts_opt = ts[0:N_MPC]
@@ -453,7 +494,7 @@ def init():
 def animate(i, slider, pusher):
     xi = X_plot[:,i]
     # distance between centre of square reference corner
-    di=np.array(cs.mtimes(R_func(xi),[-a/2, -a/2, 0]).T)[0]
+    di=np.array(cs.mtimes(R_pusher_func(xi),[-a/2, -a/2, 0]).T)[0]
     # square reference corner
     ci = xi[0:3] + di
     # compute transformation with respect to rotation angle xi[2]
@@ -473,7 +514,7 @@ def animate(i, slider, pusher):
 ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
         fargs=(slider,pusher,),
         frames=Nidx,
-        interval=T,
+        interval=dt*1000,
         blit=True, repeat=False)
 ## to save animation, uncomment the line below:
 #ani.save('MIQP_kinda_of_working.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
