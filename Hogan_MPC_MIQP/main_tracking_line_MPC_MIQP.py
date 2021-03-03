@@ -285,10 +285,8 @@ for i in range(N_MPC-1):
     opt.g += [U_bar[2,i] + bigM*Z[2,i]]
     opt.g += [U_bar[2,i] - bigM*Z[1,i]]
     ## Control constraints
-    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i] + bigM*Z[1,i]]
-    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] + bigM*Z[2,i]]
-    opt.g += [miu_p*U_bar[0,i]+U_bar[1,i] - bigM*(1-Z[2,i])]
-    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] - bigM*(1-Z[1,i])]
+    opt.g += (fric_cone_c(U_bar[:,i]) + bigM*Z[0:2,i]).elements()
+    opt.g += (fric_cone_c(U_bar[:,i]) - bigM*(1-Z[0:2,i])).elements()
 for i in range(N_m):
     ## Integer summation
     opt.g += [cs.sum1(Zm[:,i])]
