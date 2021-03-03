@@ -192,10 +192,8 @@ for i in range(N-1):
     ARGS_NOM.lbg += [0]*N_x
     ARGS_NOM.ubg += [0]*N_x
     ## ---- State constraints ----
-    ARGS_NOM.lbg += [-U_nom_val[2,i]]
-    ARGS_NOM.ubg += [cs.inf]
-    ARGS_NOM.lbg += [-cs.inf]
-    ARGS_NOM.ubg += [-U_nom_val[2,i]]
+    ARGS_NOM.lbg += [-U_nom_val[2,i], -cs.inf]
+    ARGS_NOM.ubg += [cs.inf, -U_nom_val[2,i]]
     ## ---- Control constraints ----
     ARGS_NOM.lbg += (-fric_cone_c(U_nom_val[:,i])).elements()
     ARGS_NOM.ubg += [cs.inf]*2
@@ -205,15 +203,8 @@ for i in range(N-1):
     ARGS_NOM.lbx += [-cs.inf]*N_x
     ARGS_NOM.ubx += [cs.inf]*N_x
     ## ---- Add Actions to optimization variables ---
-    # normal vel
-    ARGS_NOM.lbx += [-U_nom_val[0,i]]
-    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i]]
-    # tangential vel
-    ARGS_NOM.lbx += [-f_lim-U_nom_val[1,i]]
-    ARGS_NOM.ubx += [f_lim-U_nom_val[1,i]]
-    # relative sliding vel
-    ARGS_NOM.lbx += [-cs.inf]
-    ARGS_NOM.ubx += [cs.inf]
+    ARGS_NOM.lbx += [-U_nom_val[0,i], -f_lim-U_nom_val[1,i], -cs.inf]
+    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i], cs.inf]
     ## ---- Set nominal trajectory as parameters ----
     ARGS_NOM.p += X_nom_val[:,i].tolist()
     ARGS_NOM.p += U_nom_val[:,i].tolist()
@@ -278,9 +269,7 @@ opt.g = []
 opt.g += [X_bar[:,0]+X_nom[:,0]-x_init] ## Initial Conditions
 for i in range(N_MPC-1):
     ## Dynamic constraints
-    Ai = A_func(X_nom[:,i], U_nom[:,i])
-    Bi = B_func(X_nom[:,i], U_nom[:,i])
-    opt.g += [X_bar[:,i+1]-X_bar[:,i]-h*(cs.mtimes(Ai,X_bar[:,i])+cs.mtimes(Bi,U_bar[:,i]))]
+    opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
     ## State constraints
     opt.g += [U_bar[2,i] + bigM*Z[2,i]]
     opt.g += [U_bar[2,i] - bigM*Z[1,i]]
