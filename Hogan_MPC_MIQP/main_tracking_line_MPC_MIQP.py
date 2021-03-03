@@ -197,14 +197,10 @@ for i in range(N-1):
     ARGS_NOM.lbg += [-cs.inf]
     ARGS_NOM.ubg += [-U_nom_val[2,i]]
     ## ---- Control constraints ----
-    ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]-U_nom_val[1,i])]
-    ARGS_NOM.ubg += [cs.inf]
-    ARGS_NOM.lbg += [-cs.inf]
-    ARGS_NOM.ubg += [-(miu_p*U_nom_val[0,i]-U_nom_val[1,i])]
-    ARGS_NOM.lbg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
-    ARGS_NOM.ubg += [cs.inf]
-    ARGS_NOM.lbg += [-cs.inf]
-    ARGS_NOM.ubg += [-(miu_p*U_nom_val[0,i]+U_nom_val[1,i])]
+    ARGS_NOM.lbg += (-fric_cone_c(U_nom_val[:,i])).elements()
+    ARGS_NOM.ubg += [cs.inf]*2
+    ARGS_NOM.lbg += [-cs.inf]*2
+    ARGS_NOM.ubg += (-fric_cone_c(U_nom_val[:,i])).elements()
     ## ---- Add States to optimization variables ---
     ARGS_NOM.lbx += [-cs.inf]*N_x
     ARGS_NOM.ubx += [cs.inf]*N_x
@@ -289,10 +285,10 @@ for i in range(N_MPC-1):
     opt.g += [U_bar[2,i] + bigM*Z[2,i]]
     opt.g += [U_bar[2,i] - bigM*Z[1,i]]
     ## Control constraints
-    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] + bigM*Z[2,i]]
-    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] - bigM*(1-Z[1,i])]
     opt.g += [miu_p*U_bar[0,i]+U_bar[1,i] + bigM*Z[1,i]]
+    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] + bigM*Z[2,i]]
     opt.g += [miu_p*U_bar[0,i]+U_bar[1,i] - bigM*(1-Z[2,i])]
+    opt.g += [miu_p*U_bar[0,i]-U_bar[1,i] - bigM*(1-Z[1,i])]
 for i in range(N_m):
     ## Integer summation
     opt.g += [cs.sum1(Zm[:,i])]
