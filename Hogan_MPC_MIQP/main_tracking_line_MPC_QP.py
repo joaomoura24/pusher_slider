@@ -33,8 +33,8 @@ miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
-N_MPC = 150 # time horizon for the MPC controller
-# N_MPC = 35 # time horizon for the MPC controller
+# N_MPC = 150 # time horizon for the MPC controller
+N_MPC = 35 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 # solver_name = 'ipopt'
@@ -85,7 +85,7 @@ R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface
 #  -------------------------------------------------------------------
 p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
-f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x, u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Compute Jacobians
@@ -204,17 +204,16 @@ u_init = cs.SX.sym('u0', N_u)
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 ## ---- Define optimization objective ----------
-Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
-Rcost = cs.diag(cs.SX([1,1,0.0]))
-cost_f = cs.Function('cost', [x, u], [cs.dot(x,cs.mtimes(Qcost,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
+Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0])); QcostN = 200*Qcost
+Rcost = cs.diag(cs.SX([1,1,0.2]))
+Q = cs.SX.sym('Q', N_x, N_x)
+cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
+cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
 cost_F = cost_f.map(N_MPC-1)
 ## ---- Initialize optimization and argument variables ---
 opt = my_opt.OptVars()
 ## ---- cost function ----
-opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost_f(X_bar[:,-1], cs.SX(N_u, 1)) 
-# opt.f = cs.dot(X_bar[:,-1],cs.mtimes(Qcost,X_bar[:,-1]))
-# for i in range(N_MPC-1):
-#     opt.f += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) + cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
+opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
 ## ---- Set optimization variables ----
 opt.x = []
 for i in range(N_MPC-1):

@@ -98,7 +98,7 @@ beta = [a, r_pusher]
 # z[0] - Sticking mode
 # z[1] - Sliding Left mode
 # z[2] - Sliding Right mode
-z = cs.SX.zeros(3,1)
+z = cs.SX.sym('x', N_i)
 #  ------------------------------------------------------------------
 
 ## Build Motion Model
@@ -249,20 +249,21 @@ for i in range(1, N_m):
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 ## ---- Set optimization objective ----------
-#Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
-Qcost = cs.SX(N_x, N_x); Qcost[0,0] = Qcost[1,1] = 30.0; Qcost[2,2] = 1.0;
-QcostN = 200*Qcost
-#Rcost = cs.diag(cs.SX([1,1,0.0]))
-Rcost = cs.SX(N_u, N_u); Rcost[0,0] = Rcost[1,1] = Rcost[2,2] = 0.5
+Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0])); QcostN = 200*Qcost
+Rcost = cs.diag(cs.SX([1,1,0.2]))
 wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
-opt.f = cs.dot(X_bar[:,-1],cs.mtimes(QcostN,X_bar[:,-1]))
-for i in range(N_MPC-1):
-    opt.f += cs.dot(X_bar[:,i],cs.mtimes(Qcost,X_bar[:,i])) 
-    opt.f += cs.dot(U_bar[:,i],cs.mtimes(Rcost,U_bar[:,i]))
-for i in range(N_m):
-    Wcosti = cs.SX(N_i, N_i)
-    for ii in range(N_i): Wcosti[ii,ii] = wcost[i]
-    opt.f += Mm[i]*cs.dot(Zm[:,i],cs.mtimes(Wcosti,Z[:,i]))
+Q = cs.SX.sym('Q', N_x, N_x)
+cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
+cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
+cost_F = cost_f.map(N_MPC-1)
+w_zi = cs.SX.sym('w_zi') # weight of the mode i
+Nmi = cs.SX.sym('Nmi') # number of samples for mode i
+cost_z = cs.Function('cost_z', [w_zi, Nmi, z], [Nmi*cs.dot(z,w_zi*z)])
+cost_Z = cost_z.map(N_m)
+## ---- cost function ----
+opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar))
+opt.f += cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
+# opt.f += cs.sum2(cost_Z(wcost, Mm, Zm))
 ## ---- Set optimization variables ----
 opt.x = []
 opt.discrete = []
@@ -324,10 +325,11 @@ X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx)
 #  -------------------------------------------------------------------
 
-z[0] = 1
-Zm0 = np.array(cs.DM(cs.repmat(z, 1, N_m)))
+z_val = cs.SX.zeros(3,1)
+z_val[0] = 1
+Zm0 = np.array(cs.DM(cs.repmat(z_val, 1, N_m)))
 Zm_lbx = np.zeros(N_m*N_i)
-Zm_ubx = np.ones(N_m*N_i)
+Zm_ubx =  np.ones(N_m*N_i)
 Zm_bg = np.ones(N_m)
 ## Set arguments and solve
 #  -------------------------------------------------------------------
@@ -370,12 +372,8 @@ for idx in range(Nidx):
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     x_opt = sol['x'][0:(N_MPC*N_xu-N_u)]
-    #print('x: ', opt.x[0:7])
-    #print('x_opt: ', x_opt[0:7])
-    #print('x0: ', args.x0[0:7])
-    #print('lbx: ', args.lbx[0:7])
-    #print('ubx: ', args.ubx[0:7])
-    #sys.exit(1)
+    z_opt = sol['x'][(N_MPC*N_xu-N_u):-1]
+    # print(z_opt[0:3])
     x_i = sol['x'][(N_MPC*N_xu-N_u):]
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
