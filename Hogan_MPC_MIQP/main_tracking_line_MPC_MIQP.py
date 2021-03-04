@@ -41,10 +41,10 @@ g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
 miu_g = 0.35 # coeficient of friction between slider and table
-miu_p = 0.3 # coeficient of friction between pusher and slider
-T = 12 # time of the simulation is seconds
+miu_p = 0.1 # coeficient of friction between pusher and slider
+T = 20 # time of the simulation is seconds
 freq = 50 # numer of increments per second
-r_pusher = 0.005 # radious of the cilindrical pusher in meter
+r_pusher = 0.01 # radious of the cilindrical pusher in meter
 Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
 bigM = 500 # big M for the Mixed Integer optimization
 f_lim = 0.1 # limit on the actuations
@@ -54,6 +54,7 @@ solver_name = 'gurobi'
 opts_dict = {'print_time': 0}
 no_printing = True
 code_gen = False
+show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -132,10 +133,10 @@ fric_cone_C = fric_cone_c.map(N-1)
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -368,8 +369,6 @@ for idx in range(Nidx):
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions and warm start ----
     u0 = U_opt[:,0].elements()
-    #print(u0)
-    #sys.exit(1)
     #x0 = X_opt[:,1].elements()
     x0 = (x0 + f_func(x0, u0)*dt).elements()
     ## ---- Store values for plotting ----
@@ -380,113 +379,77 @@ for idx in range(Nidx):
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-ts = np.linspace(0, T, N)
-ts_X = ts[0:Nidx+1]
-ts_U = ts[0:Nidx]
-ts_opt = ts[0:N_MPC]
+fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
+#  -------------------------------------------------------------------
+t_N_x = np.linspace(0, T, N)
+t_N_u = np.linspace(0, T, N-1)
+t_idx_x = t_N_x[0:Nidx+1]
+t_idx_u = t_N_x[0:Nidx]
 X_nom_val = np.array(X_nom_val)
 #  -------------------------------------------------------------------
-fig = plt.figure(constrained_layout=True, figsize=(6, 8))
-spec = gridspec.GridSpec(ncols=2, nrows=3, figure=fig)
-ax_x = fig.add_subplot(spec[0, 0])
-ax_y = fig.add_subplot(spec[0, 1])
-ax_ang = fig.add_subplot(spec[1, 0])
-ax_fn = fig.add_subplot(spec[1, 1])
-ax_t = fig.add_subplot(spec[2, :])
+axs[0].plot(t_N_x, X_nom_val[0,:], 'b', label='x nom')
+axs[0].plot(t_idx_x, X_plot[0,:], '--g', label='x opt')
+axs[0].plot(t_N_x, X_nom_val[1,:], 'r', label='y nom')
+axs[0].plot(t_idx_x, X_plot[1,:], '--y', label='y opt')
+handles, labels = axs[0].get_legend_handles_labels()
+axs[0].legend(handles, labels)
+axs[0].set_ylabel('position [m]')
+axs[0].set_title('Slider CoM')
+axs[0].grid()
 #  -------------------------------------------------------------------
-ax_x.plot(ts, X_nom_val[0,:], color='b', label='nom')
-ax_x.plot(ts_X, X_plot[0,:], color='r', label='opt')
-handles, labels = ax_x.get_legend_handles_labels()
-ax_x.legend(handles, labels)
-ax_x.set(xlabel='time [s]', ylabel='position [m]',
-               title='Slider CoM x position')
-ax_x.grid()
+axs[1].plot(t_N_x, X_nom_val[2,:]*(180/np.pi), 'b', label='slider nom')
+axs[1].plot(t_idx_x, X_plot[2,:]*(180/np.pi), '--g', label='slider opt')
+axs[1].plot(t_N_x, X_nom_val[3,:]*(180/np.pi), 'r', label='pusher nom')
+axs[1].plot(t_idx_x, X_plot[3,:]*(180/np.pi), '--y', label='pusher opt')
+handles, labels = axs[1].get_legend_handles_labels()
+axs[1].legend(handles, labels)
+axs[1].set_ylabel('angles [degrees]')
+axs[1].set_title('Angles of pusher and Slider')
+axs[1].grid()
 #  -------------------------------------------------------------------
-ax_y.plot(ts, X_nom_val[1,:], color='b', label='nom')
-ax_y.plot(ts_X, X_plot[1,:], color='r', label='opt')
-handles, labels = ax_y.get_legend_handles_labels()
-ax_y.legend(handles, labels)
-ax_y.set(xlabel='time [s]', ylabel='position [m]',
-               title='Slider CoM y position')
-ax_y.grid()
+axs[2].plot(t_N_u, U_nom_val[0,:], 'b', label='norm nom')
+axs[2].plot(t_idx_u, U_plot[0,:], '--g', label='norm bar')
+axs[2].plot(t_N_u, U_nom_val[1,:], 'r', label='tan nom')
+axs[2].plot(t_idx_u, U_plot[1,:], '--y', label='tan bar')
+handles, labels = axs[2].get_legend_handles_labels()
+axs[2].legend(handles, labels)
+axs[2].set_ylabel('vel [m/s]')
+axs[2].set_title('Puhser control vel')
+axs[2].grid()
 #  -------------------------------------------------------------------
-ax_ang.plot(ts_X, X_plot[2,:]*(180/np.pi), color='b', label='slider')
-ax_ang.plot(ts_X, X_plot[3,:]*(180/np.pi), color='r', label='pusher')
-handles, labels = ax_ang.get_legend_handles_labels()
-ax_ang.legend(handles, labels)
-ax_ang.set(xlabel='time [s]', ylabel='angles [degrees]',
-               title='Angles of pusher and Slider')
-ax_ang.grid()
-#  -------------------------------------------------------------------
-ax_fn.plot(ts_U, U_plot[0,:], color='b', label='norm')
-ax_fn.plot(ts_U, U_plot[1,:], color='g', label='tan')
-handles, labels = ax_fn.get_legend_handles_labels()
-ax_fn.legend(handles, labels)
-ax_fn.set(xlabel='time [s]', ylabel='force [N]',
-               title='Pusher vel. on slider')
-ax_fn.grid()
-#  -------------------------------------------------------------------
-ax_t.plot(ts_U, comp_time)
-ax_t.set(xlabel='time [s]', ylabel='time [s]',
-               title='Computational time')
-ax_t.grid()
+axs[3].plot(t_idx_u, comp_time)
+axs[3].set_xlabel('time [s]')
+axs[3].set_ylabel('time [s]')
+axs[3].set_title('Computational time')
+axs[3].grid()
 #  -------------------------------------------------------------------
 plt.show(block=False)
 #  -------------------------------------------------------------------
 
-# Animation of Nominal Trajectory
+# Animation
 #  -------------------------------------------------------------------
-# set up the figure and subplot
-fig_ani = plt.figure()
-fig_ani.canvas.set_window_title('Matplotlib Animation')
-ax_ani = fig_ani.add_subplot(111, aspect='equal', autoscale_on=False, \
-        xlim=(-0.05,0.65), ylim=(-0.15,0.15) \
-)
-# draw nominal trajectory
-ax_ani.plot(X_nom_val[0,:], X_nom_val[1,:], color='red', linewidth=2.0, linestyle='dashed')
-ax_ani.plot(X_nom_val[0,0], X_nom_val[1,0], X_nom_val[0,-1], X_nom_val[1,-1], marker='o', color='red')
-ax_ani.grid();
-ax_ani.set_aspect('equal', 'box')
-ax_ani.set_title('Pusher-Slider Motion Animation')
-slider = patches.Rectangle([0,0], a, a)
-pusher = patches.Circle([0,0], radius=r_pusher, color='black')
-# Plot centre of the slider
-path_future, = ax_ani.plot(x_init_val[0], x_init_val[1], color='orange', linestyle='dashed')
-path_past, = ax_ani.plot(x_init_val[0], x_init_val[1], color='orange')
-path_past.set_linewidth(2)
-def init():
-    ax_ani.add_patch(slider)
-    ax_ani.add_patch(pusher)
-    return []
-    #return slider,
-def animate(i, slider, pusher):
-    xi = X_plot[:,i]
-    # distance between centre of square reference corner
-    di=np.array(cs.mtimes(R_pusher_func(xi),[-a/2, -a/2, 0]).T)[0]
-    # square reference corner
-    ci = xi[0:3] + di
-    # compute transformation with respect to rotation angle xi[2]
-    trans_ax = ax_ani.transData
-    coords = trans_ax.transform(ci[0:2])
-    trans_i = transforms.Affine2D().rotate_around(coords[0], coords[1], xi[2])
-    # Plot centre of the slider
-    path_future.set_data(X_future[0,:,i], X_future[1,:,i])
-    path_past.set_data(X_plot[0,0:i], X_plot[1,0:i])
-    # Set changes
-    slider.set_transform(trans_ax+trans_i)
-    slider.set_xy([ci[0], ci[1]])
-    pusher.set_center(np.array(p_pusher_func(xi)))
-    return []
-#init()
-# call the animation
-ani = animation.FuncAnimation(fig_ani, animate, init_func=init, \
-        fargs=(slider,pusher,),
-        frames=Nidx,
-        interval=dt*1000,
-        blit=True, repeat=False)
-## to save animation, uncomment the line below:
-#ani.save('MIQP_kinda_of_working.mp4', fps=freq, extra_args=['-vcodec', 'libx264'])
-#ani.save('sliding_tracking_line_fullTO_QP.gif', writer='imagemagick', fps=freq)
-#show the animation
+if show_anim:
+#  -------------------------------------------------------------------
+    fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
+    # get slider and pusher patches
+    slider, pusher, path_past, path_future = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+            ax, 
+            p_pusher_func, 
+            R_pusher_func, 
+            X_plot,
+            a, r_pusher)
+    # call the animation
+    ani = animation.FuncAnimation(fig,
+            my_plots.animate_square_slider_and_circle_pusher,
+            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
+            frames=Nidx,
+            interval=dt*1000,
+            blit=True,
+            repeat=False)
+    ## to save animation, uncomment the line below:
+    ## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
+#  -------------------------------------------------------------------
+
+#  -------------------------------------------------------------------
 plt.show()
 #  -------------------------------------------------------------------
