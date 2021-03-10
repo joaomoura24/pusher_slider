@@ -12,7 +12,7 @@
 ## -------------------------------------------------------------------
 import numpy as np
 import sys
-# import casadi as cs
+import casadi as cs
 
 ## Generate Nominal Trajectory (line)
 def generate_traj_line(x_f, y_f, N):
@@ -55,6 +55,7 @@ def compute_nomState_from_nomTraj(x_data, y_data, dt):
     x3_nom = np.zeros(x0_nom.shape)
     Dx3_nom = np.diff(x3_nom)
     # stack state and derivative of state
-    x_nom = np.vstack((x0_nom, x1_nom, x2_nom, x3_nom))
-    dx_nom = np.vstack((Dx0_nom, Dx1_nom, Dx2_nom, Dx3_nom))/dt
+    # x_nom = np.vstack((x0_nom, x1_nom, x2_nom, x3_nom))
+    x_nom = cs.horzcat(x0_nom, x1_nom, x2_nom, x3_nom).T
+    dx_nom = cs.horzcat(Dx0_nom, Dx1_nom, Dx2_nom, Dx3_nom).T/dt
     return x_nom, dx_nom
