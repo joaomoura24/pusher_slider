@@ -168,12 +168,12 @@ for i in range(N-1):
     ARGS_NOM.lbx += [-U_nom_val[0,i], -cs.inf, U_nom_val[2,i]]
     ARGS_NOM.ubx += [cs.inf, cs.inf, U_nom_val[2,i]]
     ## ---- Set nominal trajectory as parameters ----
-    ARGS_NOM.p += X_nom_val[:,i].tolist()
+    ARGS_NOM.p += X_nom_val[:,i].elements()
     ARGS_NOM.p += U_nom_val[:,i].tolist()
 ## ---- Add last States to optimization variables ---
 ARGS_NOM.lbx += [-cs.inf]*N_x
 ARGS_NOM.ubx += [cs.inf]*N_x
-ARGS_NOM.p += X_nom_val[:,-1].tolist()
+ARGS_NOM.p += X_nom_val[:,-1].elements()
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -274,20 +274,20 @@ t_N_u = np.linspace(0, T, N-1)
 t_mpc_x = t_N_x[idx:(idx+N_MPC)]
 t_mpc_u = t_N_x[idx:(idx+N_MPC-1)]
 #  -------------------------------------------------------------------
-axs[0].plot(t_N_x, X_nom_val[0,:], 'b', label='x nom')
-axs[0].plot(t_mpc_x, X_opt[0,:], '--g', label='x opt')
-axs[0].plot(t_N_x, X_nom_val[1,:], 'r', label='y nom')
-axs[0].plot(t_mpc_x, X_opt[1,:], '--y', label='y opt')
+axs[0].plot(t_N_x, X_nom_val[0,:].T, 'b', label='x nom')
+axs[0].plot(t_mpc_x, X_opt[0,:].T, '--g', label='x opt')
+axs[0].plot(t_N_x, X_nom_val[1,:].T, 'r', label='y nom')
+axs[0].plot(t_mpc_x, X_opt[1,:].T, '--y', label='y opt')
 handles, labels = axs[0].get_legend_handles_labels()
 axs[0].legend(handles, labels)
 axs[0].set_ylabel('position [m]')
 axs[0].set_title('Slider CoM')
 axs[0].grid()
 #  -------------------------------------------------------------------
-axs[1].plot(t_N_x, X_nom_val[2,:]*(180/np.pi), 'b', label='slider nom')
-axs[1].plot(t_mpc_x, X_opt[2,:]*(180/np.pi), '--g', label='slider opt')
-axs[1].plot(t_N_x, X_nom_val[3,:]*(180/np.pi), 'r', label='pusher nom')
-axs[1].plot(t_mpc_x, X_opt[3,:]*(180/np.pi), '--y', label='pusher opt')
+axs[1].plot(t_N_x, X_nom_val[2,:].T*(180/np.pi), 'b', label='slider nom')
+axs[1].plot(t_mpc_x, X_opt[2,:].T*(180/np.pi), '--g', label='slider opt')
+axs[1].plot(t_N_x, X_nom_val[3,:].T*(180/np.pi), 'r', label='pusher nom')
+axs[1].plot(t_mpc_x, X_opt[3,:].T*(180/np.pi), '--y', label='pusher opt')
 handles, labels = axs[1].get_legend_handles_labels()
 axs[1].legend(handles, labels)
 axs[1].set_ylabel('angles [degrees]')
@@ -315,18 +315,19 @@ axs[3].grid()
 #  -------------------------------------------------------------------
 if show_anim:
 #  -------------------------------------------------------------------
+    x_anim = np.array(X_opt)
     fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
     slider, pusher, path, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
             R_pusher_func, 
-            X_opt,
+            x_anim,
             a, r_pusher)
     # call the animation
     ani = animation.FuncAnimation(fig,
             my_plots.animate_square_slider_and_circle_pusher,
-            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_opt, a, path),
+            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, x_anim, a, path),
             frames=N_MPC,
             interval=dt*1000,
             blit=True,

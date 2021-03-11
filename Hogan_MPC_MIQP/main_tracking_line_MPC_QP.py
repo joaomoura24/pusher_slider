@@ -112,8 +112,8 @@ fric_cone_C = fric_cone_c.map(N-1)
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -122,7 +122,7 @@ X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1
 u_nom = cs.SX.sym('u_nom', N_u, N-1)
 #  ------------------------------------------------------------------
 # declare cost function
-W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.01]))
+W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
 cost_F = cost_f.map(N-1)
@@ -144,7 +144,7 @@ args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((N-1)*N_u)
 # opt var boundaries
-args.lbx = [-cs.inf, -cs.inf, 0.0]*(N-1)
+args.lbx = [0.0,   -cs.inf, 0.0]*(N-1)
 args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((N-1)*2)
@@ -178,14 +178,14 @@ for i in range(N-1):
     ## ---- Add Actions to optimization variables ---
     # [normal vel, tangential vel, relative sliding vel]
     ARGS_NOM.lbx += [-U_nom_val[0,i], -cs.inf, U_nom_val[2,i]]
-    ARGS_NOM.ubx += [cs.inf, cs.inf, U_nom_val[2,i]]
+    ARGS_NOM.ubx += [cs.inf,           cs.inf, U_nom_val[2,i]]
     ## ---- Set nominal trajectory as parameters ----
-    ARGS_NOM.p += X_nom_val[:,i].tolist()
+    ARGS_NOM.p += X_nom_val[:,i].elements()
     ARGS_NOM.p += U_nom_val[:,i].tolist()
 ## ---- Add last States to optimization variables ---
 ARGS_NOM.lbx += [-cs.inf]*N_x
 ARGS_NOM.ubx += [cs.inf]*N_x
-ARGS_NOM.p += X_nom_val[:,-1].tolist()
+ARGS_NOM.p += X_nom_val[:,-1].elements()
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -311,8 +311,8 @@ for idx in range(Nidx):
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions ----
     u0 = U_opt[:,0].elements()
-    #x0 = X_opt[:,1].elements()
-    x0 = (x0 + f_func(x0, u0)*dt).elements()
+    x0 = X_opt[:,1].elements()
+    # x0 = (x0 + f_func(x0, u0)*dt).elements()
     ## ---- Store values for plotting ----
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
@@ -353,9 +353,9 @@ axs[1].set_title('Angles of pusher and Slider')
 axs[1].grid()
 #  -------------------------------------------------------------------
 axs[2].plot(t_N_u, U_nom_val[0,:], 'b', label='norm nom')
-axs[2].plot(t_idx_u, U_plot[0,:], '--g', label='norm bar')
+axs[2].plot(t_idx_u, U_plot[0,:], '--g', label='norm opt')
 axs[2].plot(t_N_u, U_nom_val[1,:], 'r', label='tan nom')
-axs[2].plot(t_idx_u, U_plot[1,:], '--y', label='tan bar')
+axs[2].plot(t_idx_u, U_plot[1,:], '--y', label='tan opt')
 handles, labels = axs[2].get_legend_handles_labels()
 axs[2].legend(handles, labels)
 axs[2].set_ylabel('vel [m/s]')
@@ -377,6 +377,13 @@ if show_anim:
 #  -------------------------------------------------------------------
     fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
+    print(X_plot.shape)
+    x0 = np.array(X_plot[:,0].T)
+    print(x0)
+    d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]
+    print(d0)
+    print(x0[0:2]+d0[0:2])
+    print('cenas')
     slider, pusher, path_past, path_future = my_plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
@@ -384,6 +391,8 @@ if show_anim:
             X_plot,
             a, r_pusher)
     # call the animation
+    print('cenas')
+    # sys.exit()
     ani = animation.FuncAnimation(fig,
             my_plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),

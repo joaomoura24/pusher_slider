@@ -40,15 +40,14 @@ N_g = 10 # number of optimization constraints
 g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
 m = 0.827 # mass of the slider in kilo grams
-miu_g = 0.35 # coeficient of friction between slider and table
-miu_p = 0.1 # coeficient of friction between pusher and slider
-T = 20 # time of the simulation is seconds
-freq = 50 # numer of increments per second
-r_pusher = 0.01 # radious of the cilindrical pusher in meter
+miu_p = 0.3 # coefficient of friction between pusher and slider
+T = 15 # time of the simulation is seconds
+freq = 25 # number of increments per second
+r_pusher = 0.01 # radius of the cylindrical pusher in meter
 Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
-bigM = 500 # big M for the Mixed Integer optimization
-f_lim = 0.1 # limit on the actuations
-x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
+bigM = 1000 # big M for the Mixed Integer optimization
+f_lim = 0.15 # limit on the actuations
+x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0*(np.pi/180.)]
 u_init_val = [0.0, 0.0, 0.0]
 solver_name = 'gurobi'
 opts_dict = {'print_time': 0}
@@ -64,13 +63,9 @@ N_m = Mm.size
 N = T*freq # total number of iterations
 dt = 1.0/freq # sampling time
 N_var = (N_xu)*N_MPC
-h = 1./freq # time interval of each iteration
-A = a**2 # area of the slider in meter square
-f_max = miu_g*m*g # limit force in Newton
 # Area integral of norm of the distance for a square:
 int_square = lambda a: dblquad(lambda x,y: np.sqrt(x**2 + y**2), -a/2, a/2, -a/2, a/2)[0]
 int_A = int_square(a)
-m_max = miu_g*m*g*int_A/A # limit torque Newton meter
 #  -------------------------------------------------------------------
 ## get string name
 prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(code_gen)
@@ -135,7 +130,7 @@ fric_cone_C = fric_cone_c.map(N-1)
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N)
 x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
@@ -167,7 +162,7 @@ args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((N-1)*N_u)
 # opt var boundaries
-args.lbx = [-cs.inf, -cs.inf, 0.0]*(N-1)
+args.lbx = [0.0, -cs.inf, 0.0]*(N-1)
 args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((N-1)*2)
@@ -204,15 +199,15 @@ for i in range(N-1):
     ARGS_NOM.lbx += [-cs.inf]*N_x
     ARGS_NOM.ubx += [cs.inf]*N_x
     ## ---- Add Actions to optimization variables ---
-    ARGS_NOM.lbx += [-U_nom_val[0,i], -f_lim-U_nom_val[1,i], -cs.inf]
-    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i], cs.inf]
+    ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], -cs.inf]
+    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i],  cs.inf]
     ## ---- Set nominal trajectory as parameters ----
-    ARGS_NOM.p += X_nom_val[:,i].tolist()
+    ARGS_NOM.p += X_nom_val[:,i].elements()
     ARGS_NOM.p += U_nom_val[:,i].tolist()
 ## ---- Add last States to optimization variables ---
 ARGS_NOM.lbx += [-cs.inf]*N_x
 ARGS_NOM.ubx += [cs.inf]*N_x
-ARGS_NOM.p += X_nom_val[:,-1].tolist()
+ARGS_NOM.p += X_nom_val[:,-1].elements()
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -237,8 +232,8 @@ for i in range(1, N_m):
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 ## ---- Set optimization objective ----------
-Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0])); QcostN = 200*Qcost
-Rcost = cs.diag(cs.SX([1,1,0.2]))
+Qcost = cs.diag(cs.SX([1.0,1.0,0.1,0.0])); QcostN = Qcost
+Rcost = cs.diag(cs.SX([1,1,0.01]))
 wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
@@ -355,7 +350,9 @@ for idx in range(Nidx):
     ## ---- Solve the optimization ----
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    xz_opt = sol['x']
     x_opt = sol['x'][0:(N_MPC*N_xu-N_u)]
+    # print(x_opt[N_x-1]*(180/np.pi))
     z_opt = sol['x'][(N_MPC*N_xu-N_u):-1]
     # print(z_opt[0:3])
     x_i = sol['x'][(N_MPC*N_xu-N_u):]
@@ -369,12 +366,16 @@ for idx in range(Nidx):
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions and warm start ----
     u0 = U_opt[:,0].elements()
-    #x0 = X_opt[:,1].elements()
+    # x0 = X_opt[:,1].elements()
     x0 = (x0 + f_func(x0, u0)*dt).elements()
+    # print(x0[N_x-1]*(180/np.pi))
     ## ---- Store values for plotting ----
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
     X_future[:,:,idx] = np.array(X_opt)
+#  -------------------------------------------------------------------
+# show sparsity pattern
+my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xz_opt)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results

@@ -27,7 +27,7 @@ N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.3 # coeficient of friction between pusher and slider
-T = 10 # time of the simulation is seconds
+T = 12 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
 x_init = [-0.01, 0.03, 30*(np.pi/180.), 0] # initial state
@@ -94,7 +94,7 @@ fric_cone_C = fric_cone_c.map(N-1)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.5, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom, dX_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -125,7 +125,7 @@ args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((N-1)*N_u)
 # opt var boundaries
-args.lbx = [-cs.inf, -cs.inf, 0.0]*(N-1)
+args.lbx = [0.0, -cs.inf, 0.0]*(N-1)
 args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((N-1)*2)
@@ -210,20 +210,20 @@ cost_opt = cost_F(X_bar_opt[:,0:-1], U_bar_opt).T
 fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
 #  -------------------------------------------------------------------
 ts = np.linspace(0, T, N)
-axs[0].plot(ts, X_nom[0,:], 'b', label='x nom')
-axs[0].plot(ts, X_opt[0,:], '--g', label='x opt')
-axs[0].plot(ts, X_nom[1,:], 'r', label='y nom')
-axs[0].plot(ts, X_opt[1,:], '--y', label='y opt')
+axs[0].plot(ts, X_nom[0,:].T, 'b', label='x nom')
+axs[0].plot(ts, X_opt[0,:].T, '--g', label='x opt')
+axs[0].plot(ts, X_nom[1,:].T, 'r', label='y nom')
+axs[0].plot(ts, X_opt[1,:].T, '--y', label='y opt')
 handles, labels = axs[0].get_legend_handles_labels()
 axs[0].legend(handles, labels)
 axs[0].set_ylabel('position [m]')
 axs[0].set_title('Slider CoM')
 axs[0].grid()
 #  -------------------------------------------------------------------
-axs[1].plot(ts, X_nom[2,:]*(180/np.pi), 'b', label='slider nom')
-axs[1].plot(ts, X_opt[2,:]*(180/np.pi), '--g', label='slider opt')
-axs[1].plot(ts, X_nom[3,:]*(180/np.pi), 'r', label='pusher nom')
-axs[1].plot(ts, X_opt[3,:]*(180/np.pi), '--y', label='pusher opt')
+axs[1].plot(ts, X_nom[2,:].T*(180/np.pi), 'b', label='slider nom')
+axs[1].plot(ts, X_opt[2,:].T*(180/np.pi), '--g', label='slider opt')
+axs[1].plot(ts, X_nom[3,:].T*(180/np.pi), 'r', label='pusher nom')
+axs[1].plot(ts, X_opt[3,:].T*(180/np.pi), '--y', label='pusher opt')
 handles, labels = axs[1].get_legend_handles_labels()
 axs[1].legend(handles, labels)
 axs[1].set_ylabel('angles [degrees]')
@@ -252,18 +252,19 @@ axs[3].grid()
 #  -------------------------------------------------------------------
 if show_anim:
 #  -------------------------------------------------------------------
+    x_anim = np.array(X_opt)
     fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
     slider, pusher, path, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
             R_pusher_func, 
-            X_opt,
+            x_anim,
             a, r_pusher)
     # call the animation
     ani = animation.FuncAnimation( fig,
             my_plots.animate_square_slider_and_circle_pusher,
-            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_opt, a, path),
+            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, x_anim, a, path),
             frames=N,
             interval=dt*1000,
             blit=True,

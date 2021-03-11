@@ -17,11 +17,11 @@ import my_opt
 N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 a = 0.09 # side dimension of the square slider in meters
-T = 15 # time of the simulation is seconds
-freq = 50 # numer of increments per second
-r_pusher = 0.01 # radious of the cilindrical pusher in meter
-miu_p = 0.5 # coeficient of friction between pusher and slider
-W_f = cs.diag(cs.SX([1.0,1.0,0.1,0.0]))
+T = 12 # time of the simulation is seconds
+freq = 50 # number of increments per second
+r_pusher = 0.01 # radius of the cylindrical pusher in meter
+miu_p = 0.3 # coefficient of friction between pusher and slider
+W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
@@ -235,7 +235,9 @@ axs[4,1].grid()
 #  -------------------------------------------------------------------
 if show_anim:
 #  -------------------------------------------------------------------
-    x_anim = x_rollout
+    print(x_nom.shape)
+    # sys.exit()
+    x_anim = np.array(x_opt)
     fig, ax = my_plots.plot_nominal_traj(x_anim[0,:].T, x_anim[1,:].T)
     # get slider and pusher patches
     slider, pusher, _, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(
@@ -250,7 +252,7 @@ if show_anim:
             my_plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, x_anim, a),
             frames=N,
-            interval=T,
+            interval=dt*1000,
             blit=True,
             repeat=False)
     ## to save animation, uncomment the line below:

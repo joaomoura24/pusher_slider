@@ -19,7 +19,7 @@ import casadi as cs
 ## Return patches
 #  -------------------------------------------------------------------
 def get_patches_for_square_slider_and_cicle_pusher(ax, pfunc, Rfunc, x_data, sq_sd, r_pusher):
-    x0 = np.array(x_data[:,0].T)[0]
+    x0 = x_data[:,0]
     d0 = np.array(cs.mtimes(Rfunc(x0),[-sq_sd/2, -sq_sd/2, 0]).T)[0]
     slider = patches.Rectangle(x0[0:2]+d0[0:2], sq_sd, sq_sd, x0[2])
     pusher = patches.Circle(np.array(pfunc(x0)), radius=r_pusher, color='black')
@@ -34,7 +34,7 @@ def get_patches_for_square_slider_and_cicle_pusher(ax, pfunc, Rfunc, x_data, sq_
 ## Return patches
 #  -------------------------------------------------------------------
 def animate_square_slider_and_circle_pusher(i, slider, pusher, ax, pfunc, Rfunc, x_data, sq_sd, path_past=None, path_future=None, X_future=None):
-    xi = np.array(x_data[:,i].T)[0]
+    xi = x_data[:,i]
     # distance between centre of square reference corner
     di = np.array(cs.mtimes(Rfunc(xi),[-sq_sd/2, -sq_sd/2, 0]).T)[0]
     # square reference corner
