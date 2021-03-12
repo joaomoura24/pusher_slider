@@ -91,10 +91,10 @@ fric_cone_C = fric_cone_c.map(N-1)
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, 0)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, 0)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N, 0)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, 0)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom, dX_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)

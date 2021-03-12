@@ -53,9 +53,8 @@ prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(c
 #  -------------------------------------------------------------------
 dt = 1.0/freq # sampling time
 N = T*freq # total number of iterations
-Nidx = N-N_MPC
 T_MPC = N_MPC*dt
-Tidx = Nidx*dt
+NN = N + N_MPC # total number of steps
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -105,27 +104,27 @@ dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar],
         [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
 ## ---- Define Control constraints ----
 fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
-fric_cone_C = fric_cone_c.map(N-1)
+fric_cone_C = fric_cone_c.map(NN-1)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 # control path variables
-u_nom = cs.SX.sym('u_nom', N_u, N-1)
+u_nom = cs.SX.sym('u_nom', N_u, NN-1)
 #  ------------------------------------------------------------------
 # declare cost function
 W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
-cost_F = cost_f.map(N-1)
+cost_F = cost_f.map(NN-1)
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 # define cost function
@@ -142,13 +141,13 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 # Instanciating optimizer arguments
 args = my_opt.OptArgs()
 # initial condition for opt var
-args.x0 = [0.0]*((N-1)*N_u)
+args.x0 = [0.0]*((NN-1)*N_u)
 # opt var boundaries
-args.lbx = [0.0,   -cs.inf, 0.0]*(N-1)
-args.ubx = [cs.inf, cs.inf, 0.0]*(N-1)
+args.lbx = [0.0,   -cs.inf, 0.0]*(NN-1)
+args.ubx = [cs.inf, cs.inf, 0.0]*(NN-1)
 # arg for sticking constraint
-args.lbg = [0.0]*((N-1)*2)
-args.ubg = [cs.inf]*((N-1)*2)
+args.lbg = [0.0]*((NN-1)*2)
+args.ubg = [cs.inf]*((NN-1)*2)
 #  -------------------------------------------------------------------
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
@@ -165,7 +164,7 @@ ARGS_NOM.ubg = []
 ARGS_NOM.lbx = []
 ARGS_NOM.ubx = []
 ARGS_NOM.p = []
-for i in range(N-1):
+for i in range(NN-1):
     ## ---- Dynamic constraints ----
     ARGS_NOM.lbg += [0]*N_x
     ARGS_NOM.ubg += [0]*N_x
@@ -261,11 +260,13 @@ elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-X_plot = np.empty([N_x, Nidx+1])
-U_plot = np.empty([N_u, Nidx])
+Nidx = int(N)
+# Nidx = 10
+X_plot = np.empty([N_x, Nidx])
+U_plot = np.empty([N_u, Nidx-1])
 X_plot[:,0] = x_init_val
 X_future = np.empty([N_x, N_MPC, Nidx])
-comp_time = np.empty(Nidx)
+comp_time = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 
 ## Set arguments and solve
@@ -273,7 +274,7 @@ comp_time = np.empty(Nidx)
 x0 = x_init_val
 u0 = u_init_val
 args = my_opt.OptArgs()
-for idx in range(Nidx):
+for idx in range(Nidx-1):
     # Indexing
     idx_x_i = idx*(N_x+N_u)
     idx_x_f = (idx+N_MPC-1)*(N_x+N_u)+N_x
@@ -326,57 +327,55 @@ for idx in range(Nidx):
 # Plot Optimization Results
 #  -------------------------------------------------------------------
 fig, axs = plt.subplots(4, 2, sharex=True, figsize=(12,8))
-ts = np.linspace(0, T, N)
-tds = np.linspace(0, T, N-1)
 t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
-t_idx_x = t_N_x[0:Nidx+1]
-t_idx_u = t_N_x[0:Nidx]
+t_idx_x = t_N_x[0:Nidx]
+t_idx_u = t_N_x[0:Nidx-1]
 X_nom_val = np.array(X_nom_val)
 #  -------------------------------------------------------------------
-axs[0,0].plot(t_N_x, X_nom_val[0,:], color='b', label='nom')
+axs[0,0].plot(t_N_x, X_nom_val[0,0:N], color='b', label='nom')
 axs[0,0].plot(t_idx_x, X_plot[0,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[0,0].get_legend_handles_labels()
 axs[0,0].legend(handles, labels)
 axs[0,0].set_ylabel('x0')
 axs[0,0].grid()
 #  -------------------------------------------------------------------
-axs[1,0].plot(t_N_x, X_nom_val[1,:], color='b', label='nom')
+axs[1,0].plot(t_N_x, X_nom_val[1,0:N], color='b', label='nom')
 axs[1,0].plot(t_idx_x, X_plot[1,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[1,0].get_legend_handles_labels()
 axs[1,0].legend(handles, labels)
 axs[1,0].set_ylabel('x1')
 axs[1,0].grid()
 #  -------------------------------------------------------------------
-axs[2,0].plot(t_N_x, X_nom_val[2,:]*(180/np.pi), color='b', label='nom')
+axs[2,0].plot(t_N_x, X_nom_val[2,0:N]*(180/np.pi), color='b', label='nom')
 axs[2,0].plot(t_idx_x, X_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
 handles, labels = axs[2,0].get_legend_handles_labels()
 axs[2,0].legend(handles, labels)
 axs[2,0].set_ylabel('x2')
 axs[2,0].grid()
 #  -------------------------------------------------------------------
-axs[3,0].plot(t_N_x, X_nom_val[3,:]*(180/np.pi), color='b', label='nom')
+axs[3,0].plot(t_N_x, X_nom_val[3,0:N]*(180/np.pi), color='b', label='nom')
 axs[3,0].plot(t_idx_x, X_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt')
 handles, labels = axs[3,0].get_legend_handles_labels()
 axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
 axs[3,0].grid()
 #  -------------------------------------------------------------------
-axs[0,1].plot(t_N_u, U_nom_val[0,:], color='b', label='nom')
+axs[0,1].plot(t_N_u, U_nom_val[0,0:N-1], color='b', label='nom')
 axs[0,1].plot(t_idx_u, U_plot[0,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[0,1].get_legend_handles_labels()
 axs[0,1].legend(handles, labels)
 axs[0,1].set_ylabel('u0')
 axs[0,1].grid()
 #  -------------------------------------------------------------------
-axs[1,1].plot(t_N_u, U_nom_val[1,:], color='b', label='nom')
+axs[1,1].plot(t_N_u, U_nom_val[1,0:N-1], color='b', label='nom')
 axs[1,1].plot(t_idx_u, U_plot[1,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[1,1].get_legend_handles_labels()
 axs[1,1].legend(handles, labels)
 axs[1,1].set_ylabel('u1')
 axs[1,1].grid()
 #  -------------------------------------------------------------------
-axs[2,1].plot(t_N_u, U_nom_val[2,:]*(180/np.pi), color='b', label='nom')
+axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1]*(180/np.pi), color='b', label='nom')
 axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
 handles, labels = axs[2,1].get_legend_handles_labels()
 axs[2,1].legend(handles, labels)
@@ -395,7 +394,7 @@ axs[3,1].grid()
 #  -------------------------------------------------------------------
 if show_anim:
 #  -------------------------------------------------------------------
-    fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
+    fig, ax = my_plots.plot_nominal_traj(x0_nom[0:N], x1_nom[0:N])
     # get slider and pusher patches
     x0 = np.array(X_plot[:,0].T)
     d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]
@@ -409,7 +408,7 @@ if show_anim:
     ani = animation.FuncAnimation(fig,
             my_plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
-            frames=Nidx,
+            frames=Nidx-1,
             interval=dt*1000,
             blit=True,
             repeat=False)

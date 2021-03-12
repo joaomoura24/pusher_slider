@@ -15,23 +15,26 @@ import sys
 import casadi as cs
 
 ## Generate Nominal Trajectory (line)
-def generate_traj_line(x_f, y_f, N):
+def generate_traj_line(x_f, y_f, N, N_MPC):
     x_nom = np.linspace(0.0, x_f, N)
     y_nom = np.linspace(0.0, y_f, N)
-    return x_nom, y_nom
-def generate_traj_circle(theta_i, theta_f, radious, N):
+    # return x_nom, y_nom
+    return np.concatenate((x_nom, x_f+x_nom[1:N_MPC+1]), axis=0), np.concatenate((y_nom, y_f+y_nom[1:N_MPC+1]), axis=0)
+def generate_traj_circle(theta_i, theta_f, radious, N, N_MPC):
     s = np.linspace(theta_i, theta_f, N)
     x_nom = radious*np.cos(s)
     y_nom = radious*np.sin(s)
     # initial position at the origin
     x_nom -= x_nom[0]
     y_nom -= y_nom[0]
-    return x_nom, y_nom
-def generate_traj_eight(side_lenght, N):
+    # return x_nom, y_nom
+    return np.concatenate((x_nom, x_nom[1:N_MPC+1]), axis=0), np.concatenate((y_nom, y_nom[1:N_MPC+1]), axis=0)
+def generate_traj_eight(side_lenght, N, N_MPC):
     s = np.linspace(0.0, 2*np.pi, N)
     x_nom = side_lenght*np.sin(s)
     y_nom = side_lenght*np.sin(s)*np.cos(s)
-    return x_nom, y_nom
+    # return x_nom, y_nom
+    return np.concatenate((x_nom, x_nom[1:N_MPC+1]), axis=0), np.concatenate((y_nom, y_nom[1:N_MPC+1]), axis=0)
 def compute_nomState_from_nomTraj(x_data, y_data, dt):
     # assign two first state trajectories
     x0_nom = x_data
