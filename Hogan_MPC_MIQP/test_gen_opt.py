@@ -235,9 +235,7 @@ axs[4,1].grid()
 #  -------------------------------------------------------------------
 if show_anim:
 #  -------------------------------------------------------------------
-    print(x_nom.shape)
-    # sys.exit()
-    x_anim = np.array(x_opt)
+    x_anim = np.array(x_rollout)
     fig, ax = my_plots.plot_nominal_traj(x_anim[0,:].T, x_anim[1,:].T)
     # get slider and pusher patches
     slider, pusher, _, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(

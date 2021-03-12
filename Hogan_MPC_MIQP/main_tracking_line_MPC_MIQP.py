@@ -37,17 +37,15 @@ N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 N_i = 3 # number of integer variables
 N_g = 10 # number of optimization constraints
-g = 9.81 # gravity acceleration constant in meter per second square
 a = 0.09 # side dimension of the square slider in meters
-m = 0.827 # mass of the slider in kilo grams
 miu_p = 0.3 # coefficient of friction between pusher and slider
-T = 15 # time of the simulation is seconds
+T = 12 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
 bigM = 1000 # big M for the Mixed Integer optimization
-f_lim = 0.15 # limit on the actuations
-x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0*(np.pi/180.)]
+f_lim = 0.1 # limit on the actuations
+x_init_val = [-0.01, 0.03, 30*(np.pi/180.), -30*(np.pi/180.)]
 u_init_val = [0.0, 0.0, 0.0]
 solver_name = 'gurobi'
 opts_dict = {'print_time': 0}
@@ -131,7 +129,7 @@ fric_cone_C = fric_cone_c.map(N-1)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.3, N)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -375,57 +373,125 @@ for idx in range(Nidx):
     X_future[:,:,idx] = np.array(X_opt)
 #  -------------------------------------------------------------------
 # show sparsity pattern
-my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xz_opt)
+# my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xz_opt)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
-#  -------------------------------------------------------------------
+fig, axs = plt.subplots(4, 2, sharex=True, figsize=(12,8))
+ts = np.linspace(0, T, N)
+tds = np.linspace(0, T, N-1)
 t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx+1]
 t_idx_u = t_N_x[0:Nidx]
 X_nom_val = np.array(X_nom_val)
 #  -------------------------------------------------------------------
-axs[0].plot(t_N_x, X_nom_val[0,:], 'b', label='x nom')
-axs[0].plot(t_idx_x, X_plot[0,:], '--g', label='x opt')
-axs[0].plot(t_N_x, X_nom_val[1,:], 'r', label='y nom')
-axs[0].plot(t_idx_x, X_plot[1,:], '--y', label='y opt')
-handles, labels = axs[0].get_legend_handles_labels()
-axs[0].legend(handles, labels)
-axs[0].set_ylabel('position [m]')
-axs[0].set_title('Slider CoM')
-axs[0].grid()
+axs[0,0].plot(t_N_x, X_nom_val[0,:], color='b', label='nom')
+axs[0,0].plot(t_idx_x, X_plot[0,:], color='g', linestyle='--', label='opt')
+handles, labels = axs[0,0].get_legend_handles_labels()
+axs[0,0].legend(handles, labels)
+axs[0,0].set_ylabel('x0')
+axs[0,0].grid()
 #  -------------------------------------------------------------------
-axs[1].plot(t_N_x, X_nom_val[2,:]*(180/np.pi), 'b', label='slider nom')
-axs[1].plot(t_idx_x, X_plot[2,:]*(180/np.pi), '--g', label='slider opt')
-axs[1].plot(t_N_x, X_nom_val[3,:]*(180/np.pi), 'r', label='pusher nom')
-axs[1].plot(t_idx_x, X_plot[3,:]*(180/np.pi), '--y', label='pusher opt')
-handles, labels = axs[1].get_legend_handles_labels()
-axs[1].legend(handles, labels)
-axs[1].set_ylabel('angles [degrees]')
-axs[1].set_title('Angles of pusher and Slider')
-axs[1].grid()
+axs[1,0].plot(t_N_x, X_nom_val[1,:], color='b', label='nom')
+axs[1,0].plot(t_idx_x, X_plot[1,:], color='g', linestyle='--', label='opt')
+handles, labels = axs[1,0].get_legend_handles_labels()
+axs[1,0].legend(handles, labels)
+axs[1,0].set_ylabel('x1')
+axs[1,0].grid()
 #  -------------------------------------------------------------------
-axs[2].plot(t_N_u, U_nom_val[0,:], 'b', label='norm nom')
-axs[2].plot(t_idx_u, U_plot[0,:], '--g', label='norm bar')
-axs[2].plot(t_N_u, U_nom_val[1,:], 'r', label='tan nom')
-axs[2].plot(t_idx_u, U_plot[1,:], '--y', label='tan bar')
-handles, labels = axs[2].get_legend_handles_labels()
-axs[2].legend(handles, labels)
-axs[2].set_ylabel('vel [m/s]')
-axs[2].set_title('Puhser control vel')
-axs[2].grid()
+axs[2,0].plot(t_N_x, X_nom_val[2,:]*(180/np.pi), color='b', label='nom')
+axs[2,0].plot(t_idx_x, X_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+handles, labels = axs[2,0].get_legend_handles_labels()
+axs[2,0].legend(handles, labels)
+axs[2,0].set_ylabel('x2')
+axs[2,0].grid()
 #  -------------------------------------------------------------------
-axs[3].plot(t_idx_u, comp_time)
-axs[3].set_xlabel('time [s]')
-axs[3].set_ylabel('time [s]')
-axs[3].set_title('Computational time')
-axs[3].grid()
+axs[3,0].plot(t_N_x, X_nom_val[3,:]*(180/np.pi), color='b', label='nom')
+axs[3,0].plot(t_idx_x, X_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+handles, labels = axs[3,0].get_legend_handles_labels()
+axs[3,0].legend(handles, labels)
+axs[3,0].set_ylabel('x3')
+axs[3,0].grid()
 #  -------------------------------------------------------------------
-plt.show(block=False)
+axs[0,1].plot(t_N_u, U_nom_val[0,:], color='b', label='nom')
+axs[0,1].plot(t_idx_u, U_plot[0,:], color='g', linestyle='--', label='opt')
+handles, labels = axs[0,1].get_legend_handles_labels()
+axs[0,1].legend(handles, labels)
+axs[0,1].set_ylabel('u0')
+axs[0,1].grid()
 #  -------------------------------------------------------------------
+axs[1,1].plot(t_N_u, U_nom_val[1,:], color='b', label='nom')
+axs[1,1].plot(t_idx_u, U_plot[1,:], color='g', linestyle='--', label='opt')
+handles, labels = axs[1,1].get_legend_handles_labels()
+axs[1,1].legend(handles, labels)
+axs[1,1].set_ylabel('u1')
+axs[1,1].grid()
+#  -------------------------------------------------------------------
+axs[2,1].plot(t_N_u, U_nom_val[2,:]*(180/np.pi), color='b', label='nom')
+axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+handles, labels = axs[2,1].get_legend_handles_labels()
+axs[2,1].legend(handles, labels)
+axs[2,1].set_ylabel('u2')
+axs[2,1].grid()
+#  -------------------------------------------------------------------
+axs[3,1].plot(t_idx_u, comp_time, color='b')
+handles, labels = axs[3,1].get_legend_handles_labels()
+axs[3,1].legend(handles, labels)
+axs[3,1].set_xlabel('time [s]')
+axs[3,1].set_ylabel('time [s]')
+axs[3,1].grid()
+#  -------------------------------------------------------------------
+
+# # Plot Optimization Results
+# #  -------------------------------------------------------------------
+# fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
+# #  -------------------------------------------------------------------
+# t_N_x = np.linspace(0, T, N)
+# t_N_u = np.linspace(0, T, N-1)
+# t_idx_x = t_N_x[0:Nidx+1]
+# t_idx_u = t_N_x[0:Nidx]
+# X_nom_val = np.array(X_nom_val)
+# #  -------------------------------------------------------------------
+# axs[0].plot(t_N_x, X_nom_val[0,:], 'b', label='x nom')
+# axs[0].plot(t_idx_x, X_plot[0,:], '--g', label='x opt')
+# axs[0].plot(t_N_x, X_nom_val[1,:], 'r', label='y nom')
+# axs[0].plot(t_idx_x, X_plot[1,:], '--y', label='y opt')
+# handles, labels = axs[0].get_legend_handles_labels()
+# axs[0].legend(handles, labels)
+# axs[0].set_ylabel('position [m]')
+# axs[0].set_title('Slider CoM')
+# axs[0].grid()
+# #  -------------------------------------------------------------------
+# axs[1].plot(t_N_x, X_nom_val[2,:]*(180/np.pi), 'b', label='slider nom')
+# axs[1].plot(t_idx_x, X_plot[2,:]*(180/np.pi), '--g', label='slider opt')
+# axs[1].plot(t_N_x, X_nom_val[3,:]*(180/np.pi), 'r', label='pusher nom')
+# axs[1].plot(t_idx_x, X_plot[3,:]*(180/np.pi), '--y', label='pusher opt')
+# handles, labels = axs[1].get_legend_handles_labels()
+# axs[1].legend(handles, labels)
+# axs[1].set_ylabel('angles [degrees]')
+# axs[1].set_title('Angles of pusher and Slider')
+# axs[1].grid()
+# #  -------------------------------------------------------------------
+# axs[2].plot(t_N_u, U_nom_val[0,:], 'b', label='norm nom')
+# axs[2].plot(t_idx_u, U_plot[0,:], '--g', label='norm bar')
+# axs[2].plot(t_N_u, U_nom_val[1,:], 'r', label='tan nom')
+# axs[2].plot(t_idx_u, U_plot[1,:], '--y', label='tan bar')
+# handles, labels = axs[2].get_legend_handles_labels()
+# axs[2].legend(handles, labels)
+# axs[2].set_ylabel('vel [m/s]')
+# axs[2].set_title('Puhser control vel')
+# axs[2].grid()
+# #  -------------------------------------------------------------------
+# axs[3].plot(t_idx_u, comp_time)
+# axs[3].set_xlabel('time [s]')
+# axs[3].set_ylabel('time [s]')
+# axs[3].set_title('Computational time')
+# axs[3].grid()
+# #  -------------------------------------------------------------------
+# plt.show(block=False)
+# #  -------------------------------------------------------------------
 
 # Animation
 #  -------------------------------------------------------------------
