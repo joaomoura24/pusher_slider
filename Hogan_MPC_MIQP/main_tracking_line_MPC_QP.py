@@ -34,9 +34,10 @@ T = 12 # time of the simulation is seconds
 freq = 25 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
-N_MPC = 35 # time horizon for the MPC controller
+N_MPC = 63 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
+f_lim = 0.2 # limit on the actuations
 # solver_name = 'ipopt'
 # solver_name = 'snopt'
 solver_name = 'gurobi'
@@ -111,7 +112,7 @@ fric_cone_C = fric_cone_c.map(NN-1)
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
 x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
@@ -176,8 +177,10 @@ for i in range(NN-1):
     ARGS_NOM.ubx += [cs.inf]*N_x
     ## ---- Add Actions to optimization variables ---
     # [normal vel, tangential vel, relative sliding vel]
-    ARGS_NOM.lbx += [-U_nom_val[0,i], -cs.inf, U_nom_val[2,i]]
-    ARGS_NOM.ubx += [cs.inf,           cs.inf, U_nom_val[2,i]]
+    # ARGS_NOM.lbx += [-U_nom_val[0,i], -cs.inf, U_nom_val[2,i]]
+    # ARGS_NOM.ubx += [cs.inf,           cs.inf, U_nom_val[2,i]]
+    ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], U_nom_val[2,i]]
+    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i], U_nom_val[2,i]]
     ## ---- Set nominal trajectory as parameters ----
     ARGS_NOM.p += X_nom_val[:,i].elements()
     ARGS_NOM.p += U_nom_val[:,i].tolist()
@@ -203,9 +206,9 @@ u_init = cs.SX.sym('u0', N_u)
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 ## ---- Define optimization objective ----------
-Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0])); QcostN = Qcost
-Rcost = cs.diag(cs.SX([1,1,0.2]))
-# Rcost = cs.diag(cs.SX([0,0,0]))
+Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0])); QcostN = Qcost
+Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
+# Rcost = cs.diag(cs.SX([0.0,0.0,0.0]))
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])

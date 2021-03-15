@@ -42,10 +42,12 @@ miu_p = 0.3 # coefficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
-Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
+# Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
+Mm = np.array([1, 2, 4, 8, 16, 32]) # mode scheduling
 bigM = 1000 # big M for the Mixed Integer optimization
-f_lim = 0.1 # limit on the actuations
-x_init_val = [-0.01, 0.03, 30*(np.pi/180.), -30*(np.pi/180.)]
+f_lim = 0.2 # limit on the actuations
+psi_lim = 2.0 # limit on the actuations
+x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0*(np.pi/180.)]
 u_init_val = [0.0, 0.0, 0.0]
 solver_name = 'gurobi'
 opts_dict = {'print_time': 0}
@@ -56,6 +58,7 @@ show_anim = True
 ## Computing Problem constants
 #  -------------------------------------------------------------------
 N_xu = N_x + N_u # number of optimization variables
+N_z = N_i*Mm.size
 N_MPC = np.sum(Mm) # time horizon for the MPC controller
 N_m = Mm.size
 N = T*freq # total number of iterations
@@ -139,7 +142,7 @@ X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1
 u_nom = cs.SX.sym('u_nom', N_u, NN-1)
 #  ------------------------------------------------------------------
 # declare cost function
-W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.01]))
+W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
 cost_F = cost_f.map(NN-1)
@@ -195,17 +198,23 @@ for i in range(NN-1):
     ARGS_NOM.lbg += [-cs.inf]*2
     ARGS_NOM.ubg += (-fric_cone_c(U_nom_val[:,i])).elements()
     ## ---- Add States to optimization variables ---
-    ARGS_NOM.lbx += [-cs.inf]*N_x
-    ARGS_NOM.ubx += [cs.inf]*N_x
+    ARGS_NOM.lbx += [-cs.inf]*(N_x-1)
+    ARGS_NOM.ubx += [cs.inf]*(N_x-1)
+    ARGS_NOM.lbx += [-40*(np.pi/180.0)]
+    ARGS_NOM.ubx += [40*(np.pi/180.0)]
     ## ---- Add Actions to optimization variables ---
-    ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], -cs.inf]
-    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i],  cs.inf]
+    ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], -psi_lim]
+    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i],  psi_lim]
     ## ---- Set nominal trajectory as parameters ----
     ARGS_NOM.p += X_nom_val[:,i].elements()
     ARGS_NOM.p += U_nom_val[:,i].tolist()
 ## ---- Add last States to optimization variables ---
-ARGS_NOM.lbx += [-cs.inf]*N_x
-ARGS_NOM.ubx += [cs.inf]*N_x
+ARGS_NOM.lbx += [-cs.inf]*(N_x-1)
+ARGS_NOM.ubx += [cs.inf]*(N_x-1)
+ARGS_NOM.lbx += [-40*(np.pi/180.0)]
+ARGS_NOM.ubx += [40*(np.pi/180.0)]
+# ARGS_NOM.lbx += [-cs.inf]*N_x
+# ARGS_NOM.ubx += [cs.inf]*N_x
 ARGS_NOM.p += X_nom_val[:,-1].elements()
 #  -------------------------------------------------------------------
 
@@ -231,9 +240,10 @@ for i in range(1, N_m):
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 ## ---- Set optimization objective ----------
-Qcost = cs.diag(cs.SX([1.0,1.0,0.1,0.0])); QcostN = Qcost
-Rcost = cs.diag(cs.SX([1,1,0.01]))
-wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1])
+Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0.0])); QcostN = Qcost
+Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
+# Rcost = cs.diag(cs.SX([0.0,0.0,0.0]))
+# wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.01, 0.1, 0.1, 0.1])
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
@@ -298,6 +308,7 @@ Nidx = int(N)
 # Nidx = 10
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
+Z_plot = np.empty([N_i, Nidx])
 X_plot[:,0] = x_init_val
 X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
@@ -350,10 +361,8 @@ for idx in range(Nidx-1):
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     xz_opt = sol['x']
-    x_opt = sol['x'][0:(N_MPC*N_xu-N_u)]
-    # print(x_opt[N_x-1]*(180/np.pi))
-    z_opt = sol['x'][(N_MPC*N_xu-N_u):-1]
-    # print(z_opt[0:3])
+    x_opt = xz_opt[0:(N_MPC*N_xu-N_u)]
+    z_opt = xz_opt[(N_MPC*N_xu-N_u):(N_MPC*N_xu-N_u+N_z)]
     x_i = sol['x'][(N_MPC*N_xu-N_u):]
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
@@ -371,6 +380,7 @@ for idx in range(Nidx-1):
     ## ---- Store values for plotting ----
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
+    Z_plot[:,idx] = z_opt[0:N_i].T
     X_future[:,:,idx] = np.array(X_opt)
 #  -------------------------------------------------------------------
 # show sparsity pattern
@@ -379,7 +389,7 @@ for idx in range(Nidx-1):
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(4, 2, sharex=True, figsize=(12,8))
+fig, axs = plt.subplots(5, 2, sharex=True, figsize=(12,8))
 t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx]
@@ -438,9 +448,17 @@ axs[2,1].grid()
 axs[3,1].plot(t_idx_u, comp_time, color='b')
 handles, labels = axs[3,1].get_legend_handles_labels()
 axs[3,1].legend(handles, labels)
-axs[3,1].set_xlabel('time [s]')
 axs[3,1].set_ylabel('time [s]')
 axs[3,1].grid()
+#  -------------------------------------------------------------------
+axs[4,1].plot(t_idx_x, Z_plot[0,:], color='r', label='sticky')
+axs[4,1].plot(t_idx_x, Z_plot[1,:], color='b', label='right')
+axs[4,1].plot(t_idx_x, Z_plot[2,:], color='g', label='left')
+handles, labels = axs[4,1].get_legend_handles_labels()
+axs[4,1].legend(handles, labels)
+axs[4,1].set_xlabel('time [s]')
+axs[4,1].set_ylabel('modes')
+axs[4,1].grid()
 #  -------------------------------------------------------------------
 
 # Animation

@@ -48,7 +48,7 @@ R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1.
 square_slider_quasi_static_ellipsoidal_limit_surface_R = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_R', [x], [R])
 #  -------------------------------------------------------------------
 ## slider position
-xc = -sl/2; yc = (sl/2)*cs.sin(psi)
+xc = -sl/2; yc = -(sl/2)*cs.tan(psi)
 rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
 p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
 square_slider_quasi_static_ellipsoidal_limit_surface_p = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_p', [x,beta], [p_pusher])
@@ -56,23 +56,6 @@ square_slider_quasi_static_ellipsoidal_limit_surface_p = cs.Function('square_sli
 ## dynamics
 Jc = cs.SX(2,3)
 Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-# B = cs.SX(Jc.T)
 f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,A),cs.mtimes(Jc.T,u[0:2])),u[2]))
-# square_slider_quasi_static_ellipsoid_fric = cs.Function('f', [x,u,beta], [f])
 square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_f', [x,u,beta], [f])
 #  -------------------------------------------------------------------
-
-# #  -------------------------------------------------------------------
-# xc = -a/2; yc = (a/2)*cs.sin(x[3])
-# Jc = cs.SX(2,3)
-# Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-# B = cs.SX(Jc.T)
-# #  -------------------------------------------------------------------
-# rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-# p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
-# p_pusher_func = cs.Function('p_pusher', [x], [p_pusher])
-# #  -------------------------------------------------------------------
-# f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,A),cs.mtimes(B,u[0:2])),u[2]))
-# f_func = cs.Function('f', [x,u,b], [f])
-# #  -------------------------------------------------------------------
-
