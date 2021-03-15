@@ -80,10 +80,10 @@ fric_cone_c = fric_cone_c.map(N-1)
 
 ## generate nominal trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N)
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.5, N)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N, 0)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, 0)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.5, N, 0)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, 0)
 #  ------------------------------------------------------------------
 # stack state and derivative of state
 x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -254,7 +254,7 @@ if show_anim:
             blit=True,
             repeat=False)
     ## to save animation, uncomment the line below:
-    ## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
+    # ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
