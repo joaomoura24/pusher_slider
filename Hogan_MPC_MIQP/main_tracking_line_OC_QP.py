@@ -27,7 +27,7 @@ N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.3 # coeficient of friction between pusher and slider
-T = 12 # time of the simulation is seconds
+T = 8 # time of the simulation is seconds
 freq = 50 # numer of increments per second
 r_pusher = 0.01 # radious of the cilindrical pusher in meter
 x_init = [-0.01, 0.03, 30*(np.pi/180.), 0] # initial state
@@ -85,7 +85,7 @@ u_bar = cs.SX.sym('u_bar', N_u)
 dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar], 
         [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
 ## ---- Define Control constraints ----
-fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
+fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
 fric_cone_C = fric_cone_c.map(N-1)
 #  -------------------------------------------------------------------
 
@@ -93,11 +93,11 @@ fric_cone_C = fric_cone_c.map(N-1)
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, 0)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, 0)
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N, 0)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.15, N, 0)
 x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, 0)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
-X_nom, dX_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 # control path variables
 u_nom = cs.SX.sym('u_nom', N_u, N-1)
@@ -110,7 +110,7 @@ cost_F = cost_f.map(N-1)
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 # define cost function
-opt.f = cs.sum2(cost_F(X_nom[:,0:-1], dX_nom, u_nom))
+opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom))
 # define optimization variables
 opt.x = cs.vertcat(*u_nom.elements())
 # define Sticking constraint
@@ -134,13 +134,17 @@ args.ubg = [cs.inf]*((N-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-U_nom = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
+U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
+X_nom = cs.SX.sym('X_nom', N_x, N)
+U_nom = cs.SX.sym('U_nom', N_u, N-1)
 X_bar = cs.SX.sym('X_bar', N_x, N)
 U_bar = cs.SX.sym('U_bar', N_u, N-1)
+X = X_nom + X_bar
+U = U_nom + U_bar
 ## ---- Define Optimization objective ---
 Qcost = cs.diag(cs.SX([3.0,3.0,0.01,0]))
 Rcost = cs.diag(cs.SX([1,1,0.0]))
@@ -149,10 +153,19 @@ cost_F = cost_f.map(N-1)
 ## ---- Initialize optimization and argument variables ---
 opt = my_opt.OptVars()
 args = my_opt.OptArgs()
+## ---- passing parameters ----
+opt.p = []
+opt.p += x.elements()
+opt.p += X_nom.elements()
+opt.p += U_nom.elements()
+args.p = []
+args.p += x_init
+args.p += X_nom_val.elements()
+args.p += U_nom_val.elements()
 ## ---- cost function ----
 opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost_f(X_bar[:,-1], cs.SX(N_u, 1)) 
 ## ---- initial state constraint ----
-opt.g = (X_bar[:,0]+X_nom[:,0]-x_init).elements()
+opt.g = (X[:,0]-x_init).elements()
 args.lbg = [0.0]*N_x
 args.ubg = [0.0]*N_x
 for i in range(N-1):
@@ -160,48 +173,49 @@ for i in range(N-1):
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
     args.lbg += [0.0]*N_x
     args.ubg += [0.0]*N_x
-# for i in range(N-1):
+for i in range(N-1):
     ## ---- friction cone constraint ----
-    opt.g += fric_cone_c(U_bar[:,i]).elements()
-    args.lbg += (-fric_cone_c(U_nom[:,i])).elements()
+    opt.g += fric_cone_c(U[:,i]).elements()
+    args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
 #-----------------------
 opt.x = []
 args.x0 = []
 args.lbx = []
 args.ubx = []
+# U_nom_val = np.array(U_nom_val)
 for i in range(N-1):
     ## ---- Add States to optimization variables ---
     opt.x    += [X_bar[:,i]]
     args.lbx += [-cs.inf]*N_x
     args.ubx += [cs.inf]*N_x
-    args.x0  += [X_nom[:,i]]
+    args.x0  += [X_nom_val[:,i]]
     ## ---- Add Actions to optimization variables ---
     # actions: normal vel, tangential vel, relative sliding vel
     opt.x    += [U_bar[:,i]]
-    args.lbx += [-U_nom[0,i], -cs.inf, U_nom[2,i]]
-    args.ubx += [cs.inf,       cs.inf, U_nom[2,i]]
-    args.x0  += [0.0,             0.0, U_nom[2,i]]
+    args.lbx += [-U_nom_val[0,i], -cs.inf, U_nom_val[2,i]]
+    args.ubx += [cs.inf,           cs.inf, U_nom_val[2,i]]
+    args.x0  += [0.0,                 0.0, U_nom_val[2,i]]
 ## ---- Add last States to optimization variables ---
 opt.x += [X_bar[:,-1]]
 args.lbx += [-cs.inf]*N_x
 args.ubx += [cs.inf]*N_x
-args.x0 += [X_nom[:,-1]]
+args.x0 += [X_nom_val[:,-1]]
 ## ---- Create solver ----
-prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g)}
+prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 # solver = cs.nlpsol('solver', 'snopt', prob)
 # solver = cs.qpsol('S', 'qpoases', prob, {'sparse':True})
 # solver = cs.qpsol('solver', 'gurobi', prob)
 ## ---- Solve optimization problem ----
-sol = solver(x0=cs.vertcat(*args.x0), lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
+sol = solver(x0=cs.vertcat(*args.x0), lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=args.p)
 w_opt = sol['x']
 my_plots.plot_sparsity(cs.horzcat(*opt.g), cs.vertcat(*opt.x), w_opt)
 ## ---- Compute actual trajectory and controls ----
 X_bar_opt = np.array(cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7]).T)
 U_bar_opt = np.array(cs.horzcat(w_opt[4::7],w_opt[5::7],w_opt[6::7]).T)
-X_opt = X_bar_opt + X_nom
-U_opt = U_bar_opt + U_nom
+X_opt = X_bar_opt + X_nom_val
+U_opt = U_bar_opt + U_nom_val
 cost_opt = cost_F(X_bar_opt[:,0:-1], U_bar_opt).T
 #  -------------------------------------------------------------------
 
@@ -210,9 +224,9 @@ cost_opt = cost_F(X_bar_opt[:,0:-1], U_bar_opt).T
 fig, axs = plt.subplots(4, 1, sharex=True, figsize=(7,9))
 #  -------------------------------------------------------------------
 ts = np.linspace(0, T, N)
-axs[0].plot(ts, X_nom[0,:].T, 'b', label='x nom')
+axs[0].plot(ts, X_nom_val[0,:].T, 'b', label='x nom')
 axs[0].plot(ts, X_opt[0,:].T, '--g', label='x opt')
-axs[0].plot(ts, X_nom[1,:].T, 'r', label='y nom')
+axs[0].plot(ts, X_nom_val[1,:].T, 'r', label='y nom')
 axs[0].plot(ts, X_opt[1,:].T, '--y', label='y opt')
 handles, labels = axs[0].get_legend_handles_labels()
 axs[0].legend(handles, labels)
@@ -220,9 +234,9 @@ axs[0].set_ylabel('position [m]')
 axs[0].set_title('Slider CoM')
 axs[0].grid()
 #  -------------------------------------------------------------------
-axs[1].plot(ts, X_nom[2,:].T*(180/np.pi), 'b', label='slider nom')
+axs[1].plot(ts, X_nom_val[2,:].T*(180/np.pi), 'b', label='slider nom')
 axs[1].plot(ts, X_opt[2,:].T*(180/np.pi), '--g', label='slider opt')
-axs[1].plot(ts, X_nom[3,:].T*(180/np.pi), 'r', label='pusher nom')
+axs[1].plot(ts, X_nom_val[3,:].T*(180/np.pi), 'r', label='pusher nom')
 axs[1].plot(ts, X_opt[3,:].T*(180/np.pi), '--y', label='pusher opt')
 handles, labels = axs[1].get_legend_handles_labels()
 axs[1].legend(handles, labels)
@@ -231,9 +245,9 @@ axs[1].set_title('Angles of pusher and Slider')
 axs[1].grid()
 #  -------------------------------------------------------------------
 ts = np.linspace(0, T, N-1)
-axs[2].plot(ts, U_nom[0,:], 'b', label='norm nom')
+axs[2].plot(ts, U_nom_val[0,:].T, 'b', label='norm nom')
 axs[2].plot(ts, U_bar_opt[0,:], '--g', label='norm bar')
-axs[2].plot(ts, U_nom[1,:], 'r', label='tan nom')
+axs[2].plot(ts, U_nom_val[1,:].T, 'r', label='tan nom')
 axs[2].plot(ts, U_bar_opt[1,:], '--y', label='tan bar')
 handles, labels = axs[2].get_legend_handles_labels()
 axs[2].legend(handles, labels)
