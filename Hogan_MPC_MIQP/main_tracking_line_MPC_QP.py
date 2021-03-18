@@ -104,22 +104,22 @@ u_bar = cs.SX.sym('u_bar', N_u)
 dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar], 
         [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
 ## ---- Define Control constraints ----
-fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
+fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
 fric_cone_C = fric_cone_c.map(NN-1)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 # control path variables
-u_nom = cs.SX.sym('u_nom', N_u, NN-1)
+u_nom_full = cs.SX.sym('u_nom_full', N_u, NN-1)
 #  ------------------------------------------------------------------
 # declare cost function
 W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
@@ -129,17 +129,17 @@ cost_F = cost_f.map(NN-1)
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 # define cost function
-opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom))
+opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom_full))
 # define optimization variables
-opt.x = cs.vertcat(*u_nom.elements())
+opt.x = cs.vertcat(*u_nom_full.elements())
 # define Sticking constraint
-opt.g = cs.horzcat(*fric_cone_C(u_nom).elements())
+opt.g = cs.horzcat(*fric_cone_C(u_nom_full).elements())
 #  -------------------------------------------------------------------
 # Generating solver
 prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #  -------------------------------------------------------------------
-# Instanciating optimizer arguments
+# Instantiating optimizer arguments
 args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((NN-1)*N_u)
@@ -153,7 +153,8 @@ args.ubg = [cs.inf]*((NN-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
+# U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
+U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 
 ## Compute argumens for the entire nominal trajectory
@@ -183,8 +184,10 @@ for i in range(NN-1):
     ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i], U_nom_val[2,i]]
     ## ---- Set nominal trajectory as parameters ----
     ARGS_NOM.p += X_nom_val[:,i].elements()
-    ARGS_NOM.p += U_nom_val[:,i].tolist()
+    ARGS_NOM.p += U_nom_val[:,i].elements()
 ## ---- Add last States to optimization variables ---
+# print(ARGS_NOM.p)
+# sys.exit()
 ARGS_NOM.lbx += [-cs.inf]*N_x
 ARGS_NOM.ubx += [cs.inf]*N_x
 ARGS_NOM.p += X_nom_val[:,-1].elements()
@@ -198,6 +201,8 @@ U_bar = cs.SX.sym('u_bar', N_u, N_MPC-1)
 ## ---- Nominal state and action variables ----
 X_nom = cs.SX.sym('x_nom', N_x, N_MPC)
 U_nom = cs.SX.sym('u_nom', N_u, N_MPC-1)
+X = X_bar + X_nom
+U = U_bar + U_nom
 ## ---- Initial state and action variables ----
 x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
@@ -232,12 +237,18 @@ for i in range(N_MPC-1):
     ## Control constraints
     opt.g += fric_cone_c(U_bar[:,i]).elements()
 ## ---- Set optimization parameters ----
-opt.p = x_init.elements()
+opt.p = []
+opt.p += x_init.elements()
 opt.p += u_init.elements()
-for i in range(N_MPC-1):
-    opt.p += X_nom[:,i].elements()
-    opt.p += U_nom[:,i].elements()
-opt.p += X_nom[:,-1].elements()
+opt.p += X_nom.elements()
+opt.p += U_nom.elements()
+# for i in range(N_MPC-1):
+#     opt.p += X_nom[:,i].elements()
+#     opt.p += U_nom[:,i].elements()
+# opt.p += X_nom[:,-1].elements()
+# print(opt.p)
+# print(cs.vertcat(*opt.p))
+# sys.exit()
 ## ---- Set solver options ----
 if solver_name == 'ipopt':
     if no_printing: opts_dict['ipopt.print_level'] = 0
@@ -277,6 +288,8 @@ comp_time = np.empty(Nidx-1)
 x0 = x_init_val
 u0 = u_init_val
 args = my_opt.OptArgs()
+# warm start
+args.x0 = ARGS_NOM.p[0:((N_MPC-1)*(N_x+N_u)+N_x)]
 for idx in range(Nidx-1):
     # Indexing
     idx_x_i = idx*(N_x+N_u)
@@ -284,11 +297,8 @@ for idx in range(Nidx-1):
     idx_g_i = idx*6
     idx_g_f = (idx+N_MPC-1)*6
     # warm start
-    if idx==0:
-        args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
-    else:
-        args.x0 = x_opt[6:-1].elements()
-        args.x0 += ARGS_NOM.p[(idx_x_f-(N_u+N_x)):idx_x_f]
+    if idx>0:
+        args.x0 = x_opt.elements()
     # setting optimization bounderies from nominal traj
     args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
     args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
@@ -296,7 +306,10 @@ for idx in range(Nidx-1):
     args.p = [] # set to empty before reinitialize
     args.p += x0
     args.p += u0
-    args.p += ARGS_NOM.p[idx_x_i:idx_x_f]
+    args.p += X_nom_val[:,idx:(idx+N_MPC)].elements()
+    args.p += U_nom_val[:,idx:(idx+N_MPC-1)].elements()
+    # sys.exit()
+    # args.p += ARGS_NOM.p[idx_x_i:idx_x_f]
     # initial state constraint
     args.lbg = [0]*N_x
     args.ubg = [0]*N_x
@@ -305,7 +318,7 @@ for idx in range(Nidx-1):
     args.ubg += ARGS_NOM.ubg[idx_g_i:idx_g_f]
     ## ---- Solve the optimization ----
     start_time = time.time()
-    sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=args.lbg, ubg=args.ubg, p=cs.vertcat(*args.p))
     x_opt = sol['x']
     # save computation time
     comp_time[idx] = time.time() - start_time
@@ -364,21 +377,21 @@ axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
 axs[3,0].grid()
 #  -------------------------------------------------------------------
-axs[0,1].plot(t_N_u, U_nom_val[0,0:N-1], color='b', label='nom')
+axs[0,1].plot(t_N_u, U_nom_val[0,0:N-1].T, color='b', label='nom')
 axs[0,1].plot(t_idx_u, U_plot[0,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[0,1].get_legend_handles_labels()
 axs[0,1].legend(handles, labels)
 axs[0,1].set_ylabel('u0')
 axs[0,1].grid()
 #  -------------------------------------------------------------------
-axs[1,1].plot(t_N_u, U_nom_val[1,0:N-1], color='b', label='nom')
+axs[1,1].plot(t_N_u, U_nom_val[1,0:N-1].T, color='b', label='nom')
 axs[1,1].plot(t_idx_u, U_plot[1,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[1,1].get_legend_handles_labels()
 axs[1,1].legend(handles, labels)
 axs[1,1].set_ylabel('u1')
 axs[1,1].grid()
 #  -------------------------------------------------------------------
-axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1]*(180/np.pi), color='b', label='nom')
+axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1].T*(180/np.pi), color='b', label='nom')
 axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
 handles, labels = axs[2,1].get_legend_handles_labels()
 axs[2,1].legend(handles, labels)
@@ -414,9 +427,10 @@ if show_anim:
             frames=Nidx-1,
             interval=dt*1000,
             blit=True,
-            repeat=False)
+            repeat=False,
+    )
     ## to save animation, uncomment the line below:
-    ## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
+    ani.save('MPC_QP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
