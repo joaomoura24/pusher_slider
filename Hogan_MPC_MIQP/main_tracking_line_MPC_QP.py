@@ -171,15 +171,13 @@ for i in range(NN-1):
     ARGS_NOM.lbg += [0]*N_x
     ARGS_NOM.ubg += [0]*N_x
     ## ---- Control constraints ----
-    ARGS_NOM.lbg += (-fric_cone_c(U_nom_val[:,i])).elements()
+    ARGS_NOM.lbg += [0.0]*2
     ARGS_NOM.ubg += [cs.inf]*2
     ## ---- Add States to optimization variables ---
     ARGS_NOM.lbx += [-cs.inf]*N_x
     ARGS_NOM.ubx += [cs.inf]*N_x
     ## ---- Add Actions to optimization variables ---
     # [normal vel, tangential vel, relative sliding vel]
-    # ARGS_NOM.lbx += [-U_nom_val[0,i], -cs.inf, U_nom_val[2,i]]
-    # ARGS_NOM.ubx += [cs.inf,           cs.inf, U_nom_val[2,i]]
     ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], U_nom_val[2,i]]
     ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i], U_nom_val[2,i]]
     ## ---- Set nominal trajectory as parameters ----
@@ -220,6 +218,7 @@ cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
 cost_F = cost_f.map(N_MPC-1)
 ## ---- Initialize optimization and argument variables ---
 opt = my_opt.OptVars()
+args = my_opt.OptArgs()
 ## ---- cost function ----
 opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
 ## ---- Set optimization variables ----
@@ -229,13 +228,18 @@ for i in range(N_MPC-1):
     opt.x += U_bar[:,i].elements()
 opt.x += X_bar[:,-1].elements()
 ## ---- Set optimzation constraints ----
-opt.g = []
-opt.g += (X_bar[:,0]+X_nom[:,0]-x_init).elements() ## Initial Conditions
+opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
+args.lbg = [0.0]*N_x
+args.ubg = [0.0]*N_x
 for i in range(N_MPC-1):
     ## Dynamic constraints
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
+    args.lbg += [0]*N_x
+    args.ubg += [0]*N_x
     ## Control constraints
-    opt.g += fric_cone_c(U_bar[:,i]).elements()
+    opt.g += fric_cone_c(U[:,i]).elements()
+    args.lbg += [0.0]*2
+    args.ubg += [cs.inf]*2
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += x_init.elements()
@@ -287,7 +291,6 @@ comp_time = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 x0 = x_init_val
 u0 = u_init_val
-args = my_opt.OptArgs()
 # warm start
 args.x0 = ARGS_NOM.p[0:((N_MPC-1)*(N_x+N_u)+N_x)]
 for idx in range(Nidx-1):
@@ -296,9 +299,6 @@ for idx in range(Nidx-1):
     idx_x_f = (idx+N_MPC-1)*(N_x+N_u)+N_x
     idx_g_i = idx*6
     idx_g_f = (idx+N_MPC-1)*6
-    # warm start
-    if idx>0:
-        args.x0 = x_opt.elements()
     # setting optimization bounderies from nominal traj
     args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
     args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
@@ -308,18 +308,13 @@ for idx in range(Nidx-1):
     args.p += u0
     args.p += X_nom_val[:,idx:(idx+N_MPC)].elements()
     args.p += U_nom_val[:,idx:(idx+N_MPC-1)].elements()
-    # sys.exit()
-    # args.p += ARGS_NOM.p[idx_x_i:idx_x_f]
-    # initial state constraint
-    args.lbg = [0]*N_x
-    args.ubg = [0]*N_x
-    # dynamics and friction constraints
-    args.lbg += ARGS_NOM.lbg[idx_g_i:idx_g_f]
-    args.ubg += ARGS_NOM.ubg[idx_g_i:idx_g_f]
     ## ---- Solve the optimization ----
     start_time = time.time()
-    sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=args.lbg, ubg=args.ubg, p=cs.vertcat(*args.p))
+    sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=cs.vertcat(*args.p))
     x_opt = sol['x']
+    # warm start
+    # if idx>0:
+    args.x0 = x_opt.elements()
     # save computation time
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
@@ -430,7 +425,7 @@ if show_anim:
             repeat=False,
     )
     ## to save animation, uncomment the line below:
-    ani.save('MPC_QP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('MPC_QP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
