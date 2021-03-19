@@ -130,10 +130,10 @@ fric_cone_C = fric_cone_c.map(NN-1)
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -173,7 +173,8 @@ args.ubg = [cs.inf]*((NN-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
+# U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
+U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 
 ## Compute argumens for the entire nominal trajectory
@@ -207,14 +208,12 @@ for i in range(NN-1):
     ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i],  psi_lim]
     ## ---- Set nominal trajectory as parameters ----
     ARGS_NOM.p += X_nom_val[:,i].elements()
-    ARGS_NOM.p += U_nom_val[:,i].tolist()
+    ARGS_NOM.p += U_nom_val[:,i].elements()
 ## ---- Add last States to optimization variables ---
 ARGS_NOM.lbx += [-cs.inf]*(N_x-1)
 ARGS_NOM.ubx += [cs.inf]*(N_x-1)
 ARGS_NOM.lbx += [-40*(np.pi/180.0)]
 ARGS_NOM.ubx += [40*(np.pi/180.0)]
-# ARGS_NOM.lbx += [-cs.inf]*N_x
-# ARGS_NOM.ubx += [cs.inf]*N_x
 ARGS_NOM.p += X_nom_val[:,-1].elements()
 #  -------------------------------------------------------------------
 
@@ -335,10 +334,10 @@ for idx in range(Nidx-1):
     if idx==0:
         args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
         args.x0 += Zm0.flatten('F').tolist()
-    else:
-        args.x0 = x_opt[6:-1].elements()
-        args.x0 += ARGS_NOM.p[(idx_x_f-(N_xu)):idx_x_f]
-        args.x0 += x_i.elements()
+    # else:
+    #     args.x0 = x_opt[6:-1].elements()
+    #     args.x0 += ARGS_NOM.p[(idx_x_f-(N_xu)):idx_x_f]
+    #     args.x0 += x_i.elements()
     # setting optimization bounderies from nominal traj
     args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
     args.lbx += Zm_lbx.tolist()
@@ -359,11 +358,14 @@ for idx in range(Nidx-1):
     args.ubg += Zm_bg.tolist()
     ## ---- Solve the optimization ----
     start_time = time.time()
-    sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=cs.vertcat(*args.p))
     xz_opt = sol['x']
     x_opt = xz_opt[0:(N_MPC*N_xu-N_u)]
     z_opt = xz_opt[(N_MPC*N_xu-N_u):(N_MPC*N_xu-N_u+N_z)]
     x_i = sol['x'][(N_MPC*N_xu-N_u):]
+    # ---- warm start ---- 
+    args.x0 = xz_opt.elements()
+    # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
     X_bar_opt = cs.horzcat(x_opt[0::N_xu],x_opt[1::N_xu],x_opt[2::N_xu],x_opt[3::N_xu]).T
@@ -424,21 +426,21 @@ axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
 axs[3,0].grid()
 #  -------------------------------------------------------------------
-axs[0,1].plot(t_N_u, U_nom_val[0,0:N-1], color='b', label='nom')
+axs[0,1].plot(t_N_u, U_nom_val[0,0:N-1].T, color='b', label='nom')
 axs[0,1].plot(t_idx_u, U_plot[0,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[0,1].get_legend_handles_labels()
 axs[0,1].legend(handles, labels)
 axs[0,1].set_ylabel('u0')
 axs[0,1].grid()
 #  -------------------------------------------------------------------
-axs[1,1].plot(t_N_u, U_nom_val[1,0:N-1], color='b', label='nom')
+axs[1,1].plot(t_N_u, U_nom_val[1,0:N-1].T, color='b', label='nom')
 axs[1,1].plot(t_idx_u, U_plot[1,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[1,1].get_legend_handles_labels()
 axs[1,1].legend(handles, labels)
 axs[1,1].set_ylabel('u1')
 axs[1,1].grid()
 #  -------------------------------------------------------------------
-axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1]*(180/np.pi), color='b', label='nom')
+axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1].T*(180/np.pi), color='b', label='nom')
 axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
 handles, labels = axs[2,1].get_legend_handles_labels()
 axs[2,1].legend(handles, labels)
@@ -482,7 +484,7 @@ if show_anim:
             blit=True,
             repeat=False)
     ## to save animation, uncomment the line below:
-    ## ani.save('sliding_nominal_traj.mp4', fps=50, extra_args=['-vcodec', 'libx264'])
+    ani.save('MPC_MIQP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
