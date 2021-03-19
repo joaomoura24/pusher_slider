@@ -124,7 +124,7 @@ u_bar = cs.SX.sym('u_bar', N_u)
 dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar], 
         [x_bar_next-x_bar-dt*(cs.mtimes(A_func(x,u), x_bar) + cs.mtimes(B_func(x,u),u_bar))])
 ## ---- Define Control constraints ----
-fric_cone_c = cs.Function('fric_cone_c', [u_bar], [cs.vertcat(miu_p*u_bar[0]+u_bar[1], miu_p*u_bar[0]-u_bar[1])])
+fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
 fric_cone_C = fric_cone_c.map(NN-1)
 #  -------------------------------------------------------------------
 
@@ -173,7 +173,6 @@ args.ubg = [cs.inf]*((NN-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-# U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
 U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 
@@ -181,22 +180,9 @@ U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 ARGS_NOM = my_opt.OptArgs()
 ## ---- Initialize variables for optimization problem ---
-ARGS_NOM.lbg = []
-ARGS_NOM.ubg = []
 ARGS_NOM.lbx = []
 ARGS_NOM.ubx = []
 for i in range(NN-1):
-    ## ---- Dynamic constraints ----
-    ARGS_NOM.lbg += [0]*N_x
-    ARGS_NOM.ubg += [0]*N_x
-    ## ---- State constraints ----
-    ARGS_NOM.lbg += [-U_nom_val[2,i], -cs.inf]
-    ARGS_NOM.ubg += [cs.inf, -U_nom_val[2,i]]
-    ## ---- Control constraints ----
-    ARGS_NOM.lbg += (-fric_cone_c(U_nom_val[:,i])).elements()
-    ARGS_NOM.ubg += [cs.inf]*2
-    ARGS_NOM.lbg += [-cs.inf]*2
-    ARGS_NOM.ubg += (-fric_cone_c(U_nom_val[:,i])).elements()
     ## ---- Add States to optimization variables ---
     ARGS_NOM.lbx += [-cs.inf]*(N_x-1)
     ARGS_NOM.ubx += [cs.inf]*(N_x-1)
@@ -276,20 +262,36 @@ for i in range(N_m):
     args.x0 += Zm0[:,i].elements()
     opt.discrete += [True]*N_i
 ## ---- Set optimzation constraints ----
-opt.g = []
-opt.g += [X[:,0]-x_init] ## Initial Conditions
+# opt.g = []
+opt.g = [X[:,0]-x_init] ## Initial Conditions
+args.lbg = [0]*N_x
+args.ubg = [0]*N_x
 for i in range(N_MPC-1):
     ## Dynamic constraints
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
+    args.lbg += [0]*N_x
+    args.ubg += [0]*N_x
     ## State constraints
     opt.g += [U_bar[2,i] + bigM*Z[2,i]]
     opt.g += [U_bar[2,i] - bigM*Z[1,i]]
-    ## Control constraints
-    opt.g += (fric_cone_c(U_bar[:,i]) + bigM*Z[0:2,i]).elements()
-    opt.g += (fric_cone_c(U_bar[:,i]) - bigM*(1-Z[0:2,i])).elements()
+    args.lbg += [0.0, -cs.inf]
+    args.ubg += [cs.inf, 0.0]
+    ## ---- Control constraints ----
+    opt.g += (fric_cone_c(U[:,i]) + bigM*Z[0:2,i]).elements()
+    args.lbg += [0.0]*2
+    args.ubg += [cs.inf]*2
+    opt.g += (fric_cone_c(U[:,i]) - bigM*(1-Z[0:2,i])).elements()
+    args.lbg += [-cs.inf]*2
+    args.ubg += [0.0]*2
+Zm_bg = np.ones(N_m)
+# print(Zm_bg)
 for i in range(N_m):
     ## Integer summation
     opt.g += [cs.sum1(Zm[:,i])]
+    args.lbg += [1.0]
+    args.ubg += [1.0]
+    # print(cs.sum1(Zm[:,i]))
+    # sys.exit()
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += x_init.elements()
@@ -320,7 +322,6 @@ comp_time = np.empty(Nidx-1)
 
 Zm_lbx = np.zeros(N_m*N_i)
 Zm_ubx =  np.ones(N_m*N_i)
-Zm_bg = np.ones(N_m)
 ## Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
@@ -342,14 +343,6 @@ for idx in range(Nidx-1):
     args.p += u0
     args.p += X_nom_val[:,idx:(idx+N_MPC)].elements()
     args.p += U_nom_val[:,idx:(idx+N_MPC-1)].elements()
-    # initial state constraint
-    args.lbg = [0]*N_x
-    args.ubg = [0]*N_x
-    # dynamics and friction constraints
-    args.lbg += ARGS_NOM.lbg[idx_g_i:idx_g_f]
-    args.lbg += Zm_bg.tolist()
-    args.ubg += ARGS_NOM.ubg[idx_g_i:idx_g_f]
-    args.ubg += Zm_bg.tolist()
     ## ---- Solve the optimization ----
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=cs.vertcat(*args.p))

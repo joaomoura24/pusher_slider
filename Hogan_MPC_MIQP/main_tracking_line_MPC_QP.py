@@ -204,7 +204,7 @@ for i in range(N_MPC-1):
     args.lbx += [-cs.inf]*N_u
     args.ubx += [cs.inf]*N_u
 opt.x += X_bar[:,-1].elements()
-args.x0 += X_nom_val[:,i].elements()
+args.x0 += X_nom_val[:,-1].elements()
 args.lbx += [-cs.inf]*N_x
 args.ubx += [cs.inf]*N_x
 ## ---- Set optimzation constraints ----
@@ -269,9 +269,8 @@ comp_time = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 x0 = x_init_val
 u0 = u_init_val
-# warm start
 for idx in range(Nidx-1):
-    ## setting parameters
+    ## ---- setting parameters ---- 
     args.p = [] # set to empty before reinitialize
     args.p += x0
     args.p += u0
@@ -279,11 +278,11 @@ for idx in range(Nidx-1):
     args.p += U_nom_val[:,idx:(idx+N_MPC-1)].elements()
     ## ---- Solve the optimization ----
     start_time = time.time()
-    sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=cs.vertcat(*args.p))
+    sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     x_opt = sol['x']
-    # warm start
+    # ---- warm start ---- 
     args.x0 = x_opt.elements()
-    # save computation time
+    # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
     X_bar_opt = cs.horzcat(x_opt[0::7],x_opt[1::7],x_opt[2::7],x_opt[3::7]).T
