@@ -233,11 +233,15 @@ Zm = cs.SX.sym('z', N_i, N_m)
 Z = cs.repmat(Zm[:, 0], 1, Mm[0])
 for i in range(1, N_m):
     Z = cs.horzcat(Z, cs.repmat(Zm[:, i], 1, Mm[i]))
+z_val = cs.SX.zeros(3,1)
+z_val[0] = 1
+Zm0 = cs.DM(cs.repmat(z_val, 1, N_m))
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
+args = my_opt.OptArgs()
 ## ---- Set optimization objective ----------
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0.0])); QcostN = Qcost
 Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
@@ -257,16 +261,21 @@ opt.f += cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1))
 # opt.f += cs.sum2(cost_Z(wcost, Mm, Zm))
 ## ---- Set optimization variables ----
 opt.x = []
+args.x0 = []
 opt.discrete = []
 for i in range(N_MPC-1):
     opt.x += X_bar[:,i].elements()
+    args.x0 += X_nom_val[:,i].elements()
     opt.discrete += [False]*N_x
     opt.x += U_bar[:,i].elements()
+    args.x0 += U_nom_val[:,i].elements()
     opt.discrete += [False]*N_u
 opt.x += X_bar[:,-1].elements()
+args.x0 += X_nom_val[:,-1].elements()
 opt.discrete += [False]*N_x
 for i in range(N_m):
     opt.x += Zm[:,i].elements()
+    args.x0 += Zm0[:,i].elements()
     opt.discrete += [True]*N_i
 ## ---- Set optimzation constraints ----
 opt.g = []
@@ -303,8 +312,8 @@ if (solver_name == 'gurobi'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-Nidx = int(N)
-# Nidx = 10
+# Nidx = int(N)
+Nidx = 10
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
 Z_plot = np.empty([N_i, Nidx])
@@ -323,21 +332,12 @@ Zm_bg = np.ones(N_m)
 #  -------------------------------------------------------------------
 x0 = x_init_val
 u0 = u_init_val
-args = my_opt.OptArgs()
 for idx in range(Nidx-1):
     # Indexing
     idx_x_i = idx*(N_xu)
     idx_x_f = (idx+N_MPC-1)*(N_xu)+N_x
     idx_g_i = idx*N_g
     idx_g_f = (idx+N_MPC-1)*N_g
-    # warm start
-    if idx==0:
-        args.x0 = ARGS_NOM.p[idx_x_i:idx_x_f]
-        args.x0 += Zm0.flatten('F').tolist()
-    # else:
-    #     args.x0 = x_opt[6:-1].elements()
-    #     args.x0 += ARGS_NOM.p[(idx_x_f-(N_xu)):idx_x_f]
-    #     args.x0 += x_i.elements()
     # setting optimization bounderies from nominal traj
     args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
     args.lbx += Zm_lbx.tolist()
