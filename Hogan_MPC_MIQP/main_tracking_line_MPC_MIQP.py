@@ -185,7 +185,6 @@ ARGS_NOM.lbg = []
 ARGS_NOM.ubg = []
 ARGS_NOM.lbx = []
 ARGS_NOM.ubx = []
-ARGS_NOM.p = []
 for i in range(NN-1):
     ## ---- Dynamic constraints ----
     ARGS_NOM.lbg += [0]*N_x
@@ -207,14 +206,11 @@ for i in range(NN-1):
     ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], -psi_lim]
     ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i],  psi_lim]
     ## ---- Set nominal trajectory as parameters ----
-    ARGS_NOM.p += X_nom_val[:,i].elements()
-    ARGS_NOM.p += U_nom_val[:,i].elements()
 ## ---- Add last States to optimization variables ---
 ARGS_NOM.lbx += [-cs.inf]*(N_x-1)
 ARGS_NOM.ubx += [cs.inf]*(N_x-1)
 ARGS_NOM.lbx += [-40*(np.pi/180.0)]
 ARGS_NOM.ubx += [40*(np.pi/180.0)]
-ARGS_NOM.p += X_nom_val[:,-1].elements()
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -225,6 +221,8 @@ U_bar = cs.SX.sym('u_bar', N_u, N_MPC-1)
 ## ---- Nominal state and action variables ----
 X_nom = cs.SX.sym('x_nom', N_x, N_MPC)
 U_nom = cs.SX.sym('u_nom', N_u, N_MPC-1)
+X = X_bar + X_nom
+U = U_bar + U_nom
 ## ---- Initial state and action variables ----
 x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
@@ -233,9 +231,9 @@ Zm = cs.SX.sym('z', N_i, N_m)
 Z = cs.repmat(Zm[:, 0], 1, Mm[0])
 for i in range(1, N_m):
     Z = cs.horzcat(Z, cs.repmat(Zm[:, i], 1, Mm[i]))
-z_val = cs.SX.zeros(3,1)
-z_val[0] = 1
-Zm0 = cs.DM(cs.repmat(z_val, 1, N_m))
+Z_val = cs.SX.zeros(3,1)
+Z_val[0] = 1
+Zm0 = cs.DM(cs.repmat(Z_val, 1, N_m))
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
@@ -279,7 +277,7 @@ for i in range(N_m):
     opt.discrete += [True]*N_i
 ## ---- Set optimzation constraints ----
 opt.g = []
-opt.g += [X_bar[:,0]+X_nom[:,0]-x_init] ## Initial Conditions
+opt.g += [X[:,0]-x_init] ## Initial Conditions
 for i in range(N_MPC-1):
     ## Dynamic constraints
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
@@ -296,10 +294,8 @@ for i in range(N_m):
 opt.p = []
 opt.p += x_init.elements()
 opt.p += u_init.elements()
-for i in range(N_MPC-1):
-    opt.p += X_nom[:,i].elements()
-    opt.p += U_nom[:,i].elements()
-opt.p += X_nom[:,-1].elements()
+opt.p += X_nom.elements()
+opt.p += U_nom.elements()
 ## ---- Set solver options ----
 opts_dict['discrete'] = opt.discrete # add integer variables
 if solver_name == 'gurobi':
@@ -322,9 +318,6 @@ X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 
-z_val = cs.SX.zeros(3,1)
-z_val[0] = 1
-Zm0 = np.array(cs.DM(cs.repmat(z_val, 1, N_m)))
 Zm_lbx = np.zeros(N_m*N_i)
 Zm_ubx =  np.ones(N_m*N_i)
 Zm_bg = np.ones(N_m)
@@ -347,7 +340,8 @@ for idx in range(Nidx-1):
     args.p = []
     args.p += x0
     args.p += u0
-    args.p += ARGS_NOM.p[idx_x_i:idx_x_f]
+    args.p += X_nom_val[:,idx:(idx+N_MPC)].elements()
+    args.p += U_nom_val[:,idx:(idx+N_MPC-1)].elements()
     # initial state constraint
     args.lbg = [0]*N_x
     args.ubg = [0]*N_x
@@ -484,7 +478,7 @@ if show_anim:
             blit=True,
             repeat=False)
     ## to save animation, uncomment the line below:
-    ani.save('MPC_MIQP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('MPC_MIQP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
