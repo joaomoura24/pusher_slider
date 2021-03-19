@@ -130,10 +130,10 @@ fric_cone_C = fric_cone_c.map(NN-1)
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -174,29 +174,6 @@ args.ubg = [cs.inf]*((NN-1)*2)
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
 U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
-#  -------------------------------------------------------------------
-
-## Compute argumens for the entire nominal trajectory
-#  -------------------------------------------------------------------
-ARGS_NOM = my_opt.OptArgs()
-## ---- Initialize variables for optimization problem ---
-ARGS_NOM.lbx = []
-ARGS_NOM.ubx = []
-for i in range(NN-1):
-    ## ---- Add States to optimization variables ---
-    ARGS_NOM.lbx += [-cs.inf]*(N_x-1)
-    ARGS_NOM.ubx += [cs.inf]*(N_x-1)
-    ARGS_NOM.lbx += [-40*(np.pi/180.0)]
-    ARGS_NOM.ubx += [40*(np.pi/180.0)]
-    ## ---- Add Actions to optimization variables ---
-    ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], -psi_lim]
-    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i],  psi_lim]
-    ## ---- Set nominal trajectory as parameters ----
-## ---- Add last States to optimization variables ---
-ARGS_NOM.lbx += [-cs.inf]*(N_x-1)
-ARGS_NOM.ubx += [cs.inf]*(N_x-1)
-ARGS_NOM.lbx += [-40*(np.pi/180.0)]
-ARGS_NOM.ubx += [40*(np.pi/180.0)]
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -246,20 +223,36 @@ opt.f += cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1))
 ## ---- Set optimization variables ----
 opt.x = []
 args.x0 = []
+args.lbx = []
+args.ubx = []
 opt.discrete = []
 for i in range(N_MPC-1):
+    ## ---- Add States to optimization variables ---
     opt.x += X_bar[:,i].elements()
     args.x0 += X_nom_val[:,i].elements()
+    args.lbx += [-cs.inf]*(N_x-1)
+    args.ubx += [cs.inf]*(N_x-1)
+    args.lbx += [-40*(np.pi/180.0)]
+    args.ubx += [40*(np.pi/180.0)]
     opt.discrete += [False]*N_x
+    ## ---- Add Actions to optimization variables ---
     opt.x += U_bar[:,i].elements()
     args.x0 += U_nom_val[:,i].elements()
+    args.lbx += [-cs.inf]*N_u
+    args.ubx += [cs.inf]*N_u
     opt.discrete += [False]*N_u
 opt.x += X_bar[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
+args.lbx += [-cs.inf]*(N_x-1)
+args.ubx += [cs.inf]*(N_x-1)
+args.lbx += [-40*(np.pi/180.0)]
+args.ubx += [40*(np.pi/180.0)]
 opt.discrete += [False]*N_x
 for i in range(N_m):
     opt.x += Zm[:,i].elements()
     args.x0 += Zm0[:,i].elements()
+    args.lbx += [0]*N_u
+    args.ubx += [1]*N_u
     opt.discrete += [True]*N_i
 ## ---- Set optimzation constraints ----
 # opt.g = []
@@ -267,31 +260,31 @@ opt.g = [X[:,0]-x_init] ## Initial Conditions
 args.lbg = [0]*N_x
 args.ubg = [0]*N_x
 for i in range(N_MPC-1):
-    ## Dynamic constraints
+    ## ---- Dynamic constraints ---- 
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
     args.lbg += [0]*N_x
     args.ubg += [0]*N_x
-    ## State constraints
-    opt.g += [U_bar[2,i] + bigM*Z[2,i]]
-    opt.g += [U_bar[2,i] - bigM*Z[1,i]]
-    args.lbg += [0.0, -cs.inf]
-    args.ubg += [cs.inf, 0.0]
-    ## ---- Control constraints ----
+    ## ---- Friction cone constraints ----
     opt.g += (fric_cone_c(U[:,i]) + bigM*Z[0:2,i]).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
     opt.g += (fric_cone_c(U[:,i]) - bigM*(1-Z[0:2,i])).elements()
     args.lbg += [-cs.inf]*2
     args.ubg += [0.0]*2
-Zm_bg = np.ones(N_m)
-# print(Zm_bg)
+    opt.g += [U_bar[2,i] + bigM*Z[2,i]]
+    opt.g += [U_bar[2,i] - bigM*Z[1,i]]
+    args.lbg += [0.0, -cs.inf]
+    args.ubg += [cs.inf, 0.0]
+    ## ---- Action Constraints ---- 
+    # [normal vel, tangential vel, relative sliding vel]
+    opt.g += U[:,i].elements()
+    args.lbg += [0.0,  -f_lim, -psi_lim]
+    args.ubg += [f_lim, f_lim,  psi_lim]
 for i in range(N_m):
     ## Integer summation
     opt.g += [cs.sum1(Zm[:,i])]
     args.lbg += [1.0]
     args.ubg += [1.0]
-    # print(cs.sum1(Zm[:,i]))
-    # sys.exit()
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += x_init.elements()
@@ -310,8 +303,8 @@ if (solver_name == 'gurobi'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-# Nidx = int(N)
-Nidx = 10
+Nidx = int(N)
+# Nidx = 10
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
 Z_plot = np.empty([N_i, Nidx])
@@ -320,23 +313,11 @@ X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 
-Zm_lbx = np.zeros(N_m*N_i)
-Zm_ubx =  np.ones(N_m*N_i)
 ## Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
 u0 = u_init_val
 for idx in range(Nidx-1):
-    # Indexing
-    idx_x_i = idx*(N_xu)
-    idx_x_f = (idx+N_MPC-1)*(N_xu)+N_x
-    idx_g_i = idx*N_g
-    idx_g_f = (idx+N_MPC-1)*N_g
-    # setting optimization bounderies from nominal traj
-    args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
-    args.lbx += Zm_lbx.tolist()
-    args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
-    args.ubx += Zm_ubx.tolist()
     ## setting parameters
     args.p = []
     args.p += x0
@@ -345,7 +326,7 @@ for idx in range(Nidx-1):
     args.p += U_nom_val[:,idx:(idx+N_MPC-1)].elements()
     ## ---- Solve the optimization ----
     start_time = time.time()
-    sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=cs.vertcat(*args.p))
+    sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     xz_opt = sol['x']
     x_opt = xz_opt[0:(N_MPC*N_xu-N_u)]
     z_opt = xz_opt[(N_MPC*N_xu-N_u):(N_MPC*N_xu-N_u+N_z)]
