@@ -157,40 +157,6 @@ u_sol = sol['x']
 U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 
-## Compute argumens for the entire nominal trajectory
-#  -------------------------------------------------------------------
-ARGS_NOM = my_opt.OptArgs()
-## ---- Initialize variables for optimization problem ---
-ARGS_NOM.lbg = []
-ARGS_NOM.ubg = []
-ARGS_NOM.lbx = []
-ARGS_NOM.ubx = []
-ARGS_NOM.p = []
-for i in range(NN-1):
-    ## ---- Dynamic constraints ----
-    ARGS_NOM.lbg += [0]*N_x
-    ARGS_NOM.ubg += [0]*N_x
-    ## ---- Control constraints ----
-    ARGS_NOM.lbg += [0.0]*2
-    ARGS_NOM.ubg += [cs.inf]*2
-    ## ---- Add States to optimization variables ---
-    ARGS_NOM.lbx += [-cs.inf]*N_x
-    ARGS_NOM.ubx += [cs.inf]*N_x
-    ## ---- Add Actions to optimization variables ---
-    # [normal vel, tangential vel, relative sliding vel]
-    ARGS_NOM.lbx += [-U_nom_val[0,i],     -f_lim-U_nom_val[1,i], U_nom_val[2,i]]
-    ARGS_NOM.ubx += [f_lim-U_nom_val[0,i], f_lim-U_nom_val[1,i], U_nom_val[2,i]]
-    ## ---- Set nominal trajectory as parameters ----
-    ARGS_NOM.p += X_nom_val[:,i].elements()
-    ARGS_NOM.p += U_nom_val[:,i].elements()
-## ---- Add last States to optimization variables ---
-# print(ARGS_NOM.p)
-# sys.exit()
-ARGS_NOM.lbx += [-cs.inf]*N_x
-ARGS_NOM.ubx += [cs.inf]*N_x
-ARGS_NOM.p += X_nom_val[:,-1].elements()
-#  -------------------------------------------------------------------
-
 ## Define variables for optimization
 #  -------------------------------------------------------------------
 ## ---- Input variables ---
@@ -223,10 +189,24 @@ args = my_opt.OptArgs()
 opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
 ## ---- Set optimization variables ----
 opt.x = []
+args.x0 = []
+args.lbx = []
+args.ubx = []
 for i in range(N_MPC-1):
+    ## ---- Add States to optimization variables ---
     opt.x += X_bar[:,i].elements()
+    args.x0 += X_nom_val[:,i].elements()
+    args.lbx += [-cs.inf]*N_x
+    args.ubx += [cs.inf]*N_x
+    ## ---- Add Actions to optimization variables ---
     opt.x += U_bar[:,i].elements()
+    args.x0 += U_nom_val[:,i].elements()
+    args.lbx += [-cs.inf]*N_u
+    args.ubx += [cs.inf]*N_u
 opt.x += X_bar[:,-1].elements()
+args.x0 += X_nom_val[:,i].elements()
+args.lbx += [-cs.inf]*N_x
+args.ubx += [cs.inf]*N_x
 ## ---- Set optimzation constraints ----
 opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
 args.lbg = [0.0]*N_x
@@ -240,19 +220,17 @@ for i in range(N_MPC-1):
     opt.g += fric_cone_c(U[:,i]).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
+    ## Constraints on actions
+    # [normal vel, tangential vel, relative sliding vel]
+    opt.g += U[:,i].elements()
+    args.lbg += [0.0,  -f_lim, 0.0]
+    args.ubg += [f_lim, f_lim, 0.0]
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += x_init.elements()
 opt.p += u_init.elements()
 opt.p += X_nom.elements()
 opt.p += U_nom.elements()
-# for i in range(N_MPC-1):
-#     opt.p += X_nom[:,i].elements()
-#     opt.p += U_nom[:,i].elements()
-# opt.p += X_nom[:,-1].elements()
-# print(opt.p)
-# print(cs.vertcat(*opt.p))
-# sys.exit()
 ## ---- Set solver options ----
 if solver_name == 'ipopt':
     if no_printing: opts_dict['ipopt.print_level'] = 0
@@ -292,16 +270,7 @@ comp_time = np.empty(Nidx-1)
 x0 = x_init_val
 u0 = u_init_val
 # warm start
-args.x0 = ARGS_NOM.p[0:((N_MPC-1)*(N_x+N_u)+N_x)]
 for idx in range(Nidx-1):
-    # Indexing
-    idx_x_i = idx*(N_x+N_u)
-    idx_x_f = (idx+N_MPC-1)*(N_x+N_u)+N_x
-    idx_g_i = idx*6
-    idx_g_f = (idx+N_MPC-1)*6
-    # setting optimization bounderies from nominal traj
-    args.lbx = ARGS_NOM.lbx[idx_x_i:idx_x_f]
-    args.ubx = ARGS_NOM.ubx[idx_x_i:idx_x_f]
     ## setting parameters
     args.p = [] # set to empty before reinitialize
     args.p += x0
@@ -313,7 +282,6 @@ for idx in range(Nidx-1):
     sol = solver(x0=args.x0, lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=cs.vertcat(*args.p))
     x_opt = sol['x']
     # warm start
-    # if idx>0:
     args.x0 = x_opt.elements()
     # save computation time
     comp_time[idx] = time.time() - start_time
