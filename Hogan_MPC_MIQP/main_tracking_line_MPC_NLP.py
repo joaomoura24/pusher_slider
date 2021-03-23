@@ -28,6 +28,7 @@ import my_opt
 #  -------------------------------------------------------------------
 N_x = 4
 N_u = 3
+N_xu = N_x + N_u # number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.3 # coeficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
@@ -38,11 +39,11 @@ N_MPC = 63 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0]
 f_lim = 0.2 # limit on the actuations
-psi_dot_lim = 2.0 # limit on the actuations
+psi_dot_lim = 5.0 # limit on the actuations
 psi_lim = 40*(np.pi/180.0)
 # solver_name = 'ipopt'
-# solver_name = 'snopt'
-solver_name = 'gurobi'
+solver_name = 'snopt'
+# solver_name = 'gurobi'
 # solver_name = 'qpoases'
 opts_dict = {'print_time': 0}
 no_printing = True
@@ -198,8 +199,6 @@ for i in range(N_MPC-1):
     ## ---- Add States to optimization variables ---
     opt.x += X_bar[:,i].elements()
     args.x0 += X_nom_val[:,i].elements()
-    # args.lbx += [-cs.inf]*N_x
-    # args.ubx += [cs.inf]*N_x
     args.lbx += [-cs.inf]*(N_x-1)
     args.ubx += [cs.inf]*(N_x-1)
     args.lbx += [-psi_lim]
@@ -211,8 +210,6 @@ for i in range(N_MPC-1):
     args.ubx += [cs.inf]*N_u
 opt.x += X_bar[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
-# args.lbx += [-cs.inf]*N_x
-# args.ubx += [cs.inf]*N_x
 args.lbx += [-cs.inf]*(N_x-1)
 args.ubx += [cs.inf]*(N_x-1)
 args.lbx += [-psi_lim]
@@ -222,15 +219,21 @@ opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
 args.lbg = [0.0]*N_x
 args.ubg = [0.0]*N_x
 for i in range(N_MPC-1):
-    ## Dynamic constraints
+    ## ---- Dynamic constraints ---- 
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
     args.lbg += [0]*N_x
     args.ubg += [0]*N_x
-    ## Control constraints
+    ## ---- Friction cone constraints ----
     opt.g += fric_cone_c(U[:,i]).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
-    ## Constraints on actions
+    opt.g += [U[1,i]*U[2,i]]
+    args.lbg += [0.0]
+    args.ubg += [cs.inf]
+    opt.g += [((miu_p**2)*(U[0,i]**2)-(U[1,i]**2))*(U[2,i]**2)]
+    args.lbg += [0.0]
+    args.ubg += [0.0]
+    ## ---- Action Constraints ---- 
     # [normal vel, tangential vel, relative sliding vel]
     opt.g += U[:,i].elements()
     args.lbg += [0.0,  -f_lim, -psi_dot_lim]
@@ -290,13 +293,11 @@ for idx in range(Nidx-1):
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     x_opt = sol['x']
-    # ---- warm start ---- 
-    args.x0 = x_opt.elements()
     # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
-    X_bar_opt = cs.horzcat(x_opt[0::7],x_opt[1::7],x_opt[2::7],x_opt[3::7]).T
-    U_bar_opt = cs.horzcat(x_opt[4::7],x_opt[5::7],x_opt[6::7]).T
+    X_bar_opt = cs.horzcat(x_opt[0::N_xu],x_opt[1::N_xu],x_opt[2::N_xu],x_opt[3::N_xu]).T
+    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu]).T
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions ----
@@ -307,6 +308,16 @@ for idx in range(Nidx-1):
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
     X_future[:,:,idx] = np.array(X_opt)
+    # ---- warm start ---- 
+    x_opt[0::N_xu] = [0.0]*(N_MPC)
+    x_opt[1::N_xu] = [0.0]*(N_MPC)
+    x_opt[2::N_xu] = [0.0]*(N_MPC)
+    x_opt[3::N_xu] = [0.0]*(N_MPC)
+    # x_opt[4::N_xu] = [0.0]*(N_MPC-1)
+    # x_opt[5::N_xu] = [0.0]*(N_MPC-1)
+    x_opt[6::N_xu] = [0.0]*(N_MPC-1)
+    args.x0 = x_opt.elements()
+    # args.x0 = [0.0]*(len(args.x0))
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), x_opt)

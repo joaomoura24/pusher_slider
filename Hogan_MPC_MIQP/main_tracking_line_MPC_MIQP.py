@@ -46,7 +46,8 @@ r_pusher = 0.01 # radius of the cylindrical pusher in meter
 Mm = np.array([1, 2, 4, 8, 16, 32]) # mode scheduling
 bigM = 1000 # big M for the Mixed Integer optimization
 f_lim = 0.2 # limit on the actuations
-psi_lim = 2.0 # limit on the actuations
+psi_dot_lim = 4.0 # limit on the actuations
+psi_lim = 40*(np.pi/180.0)
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0*(np.pi/180.)]
 u_init_val = [0.0, 0.0, 0.0]
 solver_name = 'gurobi'
@@ -130,10 +131,10 @@ fric_cone_C = fric_cone_c.map(NN-1)
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -232,8 +233,8 @@ for i in range(N_MPC-1):
     args.x0 += X_nom_val[:,i].elements()
     args.lbx += [-cs.inf]*(N_x-1)
     args.ubx += [cs.inf]*(N_x-1)
-    args.lbx += [-40*(np.pi/180.0)]
-    args.ubx += [40*(np.pi/180.0)]
+    args.lbx += [-psi_lim]
+    args.ubx += [psi_lim]
     opt.discrete += [False]*N_x
     ## ---- Add Actions to optimization variables ---
     opt.x += U_bar[:,i].elements()
@@ -245,8 +246,8 @@ opt.x += X_bar[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
 args.lbx += [-cs.inf]*(N_x-1)
 args.ubx += [cs.inf]*(N_x-1)
-args.lbx += [-40*(np.pi/180.0)]
-args.ubx += [40*(np.pi/180.0)]
+args.lbx += [-psi_lim]
+args.ubx += [psi_lim]
 opt.discrete += [False]*N_x
 for i in range(N_m):
     opt.x += Zm[:,i].elements()
@@ -278,8 +279,8 @@ for i in range(N_MPC-1):
     ## ---- Action Constraints ---- 
     # [normal vel, tangential vel, relative sliding vel]
     opt.g += U[:,i].elements()
-    args.lbg += [0.0,  -f_lim, -psi_lim]
-    args.ubg += [f_lim, f_lim,  psi_lim]
+    args.lbg += [0.0,  -f_lim, -psi_dot_lim]
+    args.ubg += [f_lim, f_lim,  psi_dot_lim]
 for i in range(N_m):
     ## Integer summation
     opt.g += [cs.sum1(Zm[:,i])]
@@ -331,8 +332,6 @@ for idx in range(Nidx-1):
     x_opt = xz_opt[0:(N_MPC*N_xu-N_u)]
     z_opt = xz_opt[(N_MPC*N_xu-N_u):(N_MPC*N_xu-N_u+N_z)]
     x_i = sol['x'][(N_MPC*N_xu-N_u):]
-    # ---- warm start ---- 
-    args.x0 = xz_opt.elements()
     # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
@@ -352,6 +351,9 @@ for idx in range(Nidx-1):
     U_plot[:,idx] = u0
     Z_plot[:,idx] = z_opt[0:N_i].T
     X_future[:,:,idx] = np.array(X_opt)
+    # ---- warm start ---- 
+    x_opt[6::N_xu] = [0.0]*(N_MPC-1)
+    args.x0 = cs.vertcat(x_opt,z_opt).elements()
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xz_opt)
