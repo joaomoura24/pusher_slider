@@ -38,15 +38,16 @@ N_u = 3 # number of actions variables
 N_i = 3 # number of integer variables
 N_g = 10 # number of optimization constraints
 a = 0.09 # side dimension of the square slider in meters
-miu_p = 0.3 # coefficient of friction between pusher and slider
+miu_p = 0.2 # coefficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
 Mm = np.array([1, 2, 4, 8, 16, 32]) # mode scheduling
-bigM = 1000 # big M for the Mixed Integer optimization
-f_lim = 0.2 # limit on the actuations
-psi_dot_lim = 4.0 # limit on the actuations
+bigM = 500 # big M for the Mixed Integer optimization
+epsilon = 0.0
+f_lim = 0.3 # limit on the actuations
+psi_dot_lim = 2.0 # limit on the actuations
 psi_lim = 40*(np.pi/180.0)
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0*(np.pi/180.)]
 u_init_val = [0.0, 0.0, 0.0]
@@ -63,6 +64,8 @@ N_z = N_i*Mm.size
 N_MPC = np.sum(Mm) # time horizon for the MPC controller
 N_m = Mm.size
 N = T*freq # total number of iterations
+Nidx = int(N)
+# Nidx = 3
 NN = N + N_MPC # total number of steps
 dt = 1.0/freq # sampling time
 N_var = (N_xu)*N_MPC
@@ -95,8 +98,8 @@ u = cs.SX.sym('u', N_u)
 beta = [a, r_pusher]
 # z - modes
 # z[0] - Sticking mode
-# z[1] - Sliding Left mode
-# z[2] - Sliding Right mode
+# z[1] - Sliding up mode
+# z[2] - Sliding down mode
 z = cs.SX.sym('x', N_i)
 #  ------------------------------------------------------------------
 
@@ -127,6 +130,7 @@ dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar],
 ## ---- Define Control constraints ----
 fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
 fric_cone_C = fric_cone_c.map(NN-1)
+fric_cone_idx = fric_cone_c.map(Nidx-1)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
@@ -208,7 +212,7 @@ args = my_opt.OptArgs()
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0.0])); QcostN = Qcost
 Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
 # Rcost = cs.diag(cs.SX([0.0,0.0,0.0]))
-# wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.01, 0.1, 0.1, 0.1])
+wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.1, 0.1])
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
@@ -266,16 +270,16 @@ for i in range(N_MPC-1):
     args.lbg += [0]*N_x
     args.ubg += [0]*N_x
     ## ---- Friction cone constraints ----
-    opt.g += (fric_cone_c(U[:,i]) + bigM*Z[0:2,i]).elements()
+    opt.g += (fric_cone_c(U[:,i]) + bigM*cs.vertcat(Z[1,i], Z[2,i])).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
-    opt.g += (fric_cone_c(U[:,i]) - bigM*(1-Z[0:2,i])).elements()
+    opt.g += (fric_cone_c(U[:,i]) - bigM*cs.vertcat(1-Z[2,i], 1-Z[1,i])).elements()
     args.lbg += [-cs.inf]*2
     args.ubg += [0.0]*2
-    opt.g += [U_bar[2,i] + bigM*Z[2,i]]
-    opt.g += [U_bar[2,i] - bigM*Z[1,i]]
-    args.lbg += [0.0, -cs.inf]
-    args.ubg += [cs.inf, 0.0]
+    opt.g += [U_bar[2,i] + bigM*Z[2,i] + epsilon*Z[0,i]]
+    opt.g += [U_bar[2,i] - bigM*Z[1,i] - epsilon*Z[0,i]]
+    args.lbg += [epsilon, -cs.inf]
+    args.ubg += [cs.inf,  -epsilon]
     ## ---- Action Constraints ---- 
     # [normal vel, tangential vel, relative sliding vel]
     opt.g += U[:,i].elements()
@@ -304,14 +308,13 @@ if (solver_name == 'gurobi'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-Nidx = int(N)
-# Nidx = 10
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
 Z_plot = np.empty([N_i, Nidx])
 X_plot[:,0] = x_init_val
 X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
+success = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 
 ## Set arguments and solve
@@ -328,6 +331,11 @@ for idx in range(Nidx-1):
     ## ---- Solve the optimization ----
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    stats = solver.stats()
+    if stats['success'] == True:
+        success[idx] = 1
+    else:
+        success[idx] = 0
     xz_opt = sol['x']
     x_opt = xz_opt[0:(N_MPC*N_xu-N_u)]
     z_opt = xz_opt[(N_MPC*N_xu-N_u):(N_MPC*N_xu-N_u+N_z)]
@@ -352,7 +360,13 @@ for idx in range(Nidx-1):
     Z_plot[:,idx] = z_opt[0:N_i].T
     X_future[:,:,idx] = np.array(X_opt)
     # ---- warm start ---- 
-    x_opt[6::N_xu] = [0.0]*(N_MPC-1)
+    # x_opt[0::N_xu] = [0.0]*(N_MPC)
+    # x_opt[1::N_xu] = [0.0]*(N_MPC)
+    # x_opt[2::N_xu] = [0.0]*(N_MPC)
+    # x_opt[3::N_xu] = [0.0]*(N_MPC)
+    # x_opt[4::N_xu] = [0.0]*(N_MPC-1)
+    # x_opt[5::N_xu] = [0.0]*(N_MPC-1)
+    # x_opt[6::N_xu] = [0.0]*(N_MPC-1)
     args.x0 = cs.vertcat(x_opt,z_opt).elements()
 #  -------------------------------------------------------------------
 # show sparsity pattern
@@ -361,12 +375,13 @@ for idx in range(Nidx-1):
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(5, 2, sharex=True, figsize=(12,8))
+fig, axs = plt.subplots(6, 2, sharex=True, figsize=(12,8))
 t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx]
 t_idx_u = t_N_x[0:Nidx-1]
 X_nom_val = np.array(X_nom_val)
+fric_cone_val = fric_cone_idx(U_plot)
 #  -------------------------------------------------------------------
 axs[0,0].plot(t_N_x, X_nom_val[0,0:N], color='b', label='nom')
 axs[0,0].plot(t_idx_x, X_plot[0,:], color='g', linestyle='--', label='opt')
@@ -382,19 +397,28 @@ axs[1,0].legend(handles, labels)
 axs[1,0].set_ylabel('x1')
 axs[1,0].grid()
 #  -------------------------------------------------------------------
-axs[2,0].plot(t_N_x, X_nom_val[2,0:N]*(180/np.pi), color='b', label='nom')
-axs[2,0].plot(t_idx_x, X_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+axs[2,0].plot(t_N_x, X_nom_val[2,0:N], color='b', label='nom')
+axs[2,0].plot(t_idx_x, X_plot[2,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[2,0].get_legend_handles_labels()
 axs[2,0].legend(handles, labels)
 axs[2,0].set_ylabel('x2')
 axs[2,0].grid()
 #  -------------------------------------------------------------------
-axs[3,0].plot(t_N_x, X_nom_val[3,0:N]*(180/np.pi), color='b', label='nom')
-axs[3,0].plot(t_idx_x, X_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+axs[3,0].plot(t_N_x, X_nom_val[3,0:N], color='b', label='nom')
+axs[3,0].plot(t_idx_x, X_plot[3,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[3,0].get_legend_handles_labels()
 axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
 axs[3,0].grid()
+#  -------------------------------------------------------------------
+axs[4,0].plot(t_idx_u, fric_cone_val[1,:].T, color='b', label='up')
+axs[4,0].plot(t_idx_u, fric_cone_val[0,:].T, color='g', label='down')
+axs[4,0].plot(t_idx_u, (U_plot[2,:].T)*0.01, color='r', label='psi_dot')
+handles, labels = axs[4,0].get_legend_handles_labels()
+axs[4,0].legend(handles, labels)
+axs[4,0].set_xlabel('time [s]')
+axs[4,0].set_ylabel('fric cone')
+axs[4,0].grid()
 #  -------------------------------------------------------------------
 axs[0,1].plot(t_N_u, U_nom_val[0,0:N-1].T, color='b', label='nom')
 axs[0,1].plot(t_idx_u, U_plot[0,:], color='g', linestyle='--', label='opt')
@@ -410,8 +434,8 @@ axs[1,1].legend(handles, labels)
 axs[1,1].set_ylabel('u1')
 axs[1,1].grid()
 #  -------------------------------------------------------------------
-axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1].T*(180/np.pi), color='b', label='nom')
-axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1].T, color='b', label='nom')
+axs[2,1].plot(t_idx_u, U_plot[2,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[2,1].get_legend_handles_labels()
 axs[2,1].legend(handles, labels)
 axs[2,1].set_ylabel('u2')
@@ -424,13 +448,20 @@ axs[3,1].set_ylabel('time [s]')
 axs[3,1].grid()
 #  -------------------------------------------------------------------
 axs[4,1].plot(t_idx_x, Z_plot[0,:], color='r', label='sticky')
-axs[4,1].plot(t_idx_x, Z_plot[1,:], color='b', label='right')
-axs[4,1].plot(t_idx_x, Z_plot[2,:], color='g', label='left')
+axs[4,1].plot(t_idx_x, Z_plot[1,:], color='b', label='up')
+axs[4,1].plot(t_idx_x, Z_plot[2,:], color='g', label='down')
 handles, labels = axs[4,1].get_legend_handles_labels()
 axs[4,1].legend(handles, labels)
-axs[4,1].set_xlabel('time [s]')
 axs[4,1].set_ylabel('modes')
 axs[4,1].grid()
+#  -------------------------------------------------------------------
+axs[5,1].plot(t_idx_u, (U_plot[1,:]*U_plot[2,:]).T, color='g', label='u1*u2')
+axs[5,1].plot(t_idx_u, 0.01*success, color='r', label='succ')
+handles, labels = axs[5,1].get_legend_handles_labels()
+axs[5,1].legend(handles, labels)
+axs[5,1].set_xlabel('time [s]')
+axs[5,1].set_ylabel('u1*u2')
+axs[5,1].grid()
 #  -------------------------------------------------------------------
 
 # Animation
