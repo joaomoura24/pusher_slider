@@ -2,9 +2,9 @@
 ## Date: 21/08/2020
 #  -------------------------------------------------------------------
 ## Description:
-#  This script implements a non-linear program (NLP) model predictive controller (MPC)
-#  for tracking a trajectory of a square slider object with a single
-#  and sliding contact pusher.
+#  This script implements a quadratic programming (QP) optimal controller (OC)
+#  for tracking a line trajectory of a square slider object with a single
+#  and fixed contacter pusher.
 #  -------------------------------------------------------------------
 
 ## Import Libraries
@@ -14,9 +14,16 @@ import sys
 import time
 import numpy as np
 import casadi as cs
+#import numpy.matlib as nplib
+from scipy.integrate import dblquad 
+#from sys import path
+#path.append(r"/Users/joaomoura/local/casadi")
 # import casadi
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.patches as patches
 import matplotlib.animation as animation
+import matplotlib.transforms as transforms
 #  -------------------------------------------------------------------
 import my_dynamics
 import my_trajectories
@@ -26,41 +33,47 @@ import my_opt
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
-N_x = 4
-N_u = 4
-N_xu = N_x + N_u # number of optimization variables
+N_x = 4 # number of state variables
+N_u = 3 # number of actions variables
+N_i = 3 # number of integer variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.2 # coefficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
-# N_MPC = 150 # time horizon for the MPC controller
-N_MPC = 63 # time horizon for the MPC controller
-x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
-u_init_val = [0.0, 0.0, 0.0, 0.0]
+# Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
+Mm = np.array([1, 2, 4, 8, 16, 32]) # mode scheduling
+bigM = 500 # big M for the Mixed Integer optimization
+epsilon = 0.0
 f_lim = 0.3 # limit on the actuations
 psi_dot_lim = 3.0 # limit on the actuations
 psi_lim = 40*(np.pi/180.0)
-# solver_name = 'ipopt'
-solver_name = 'snopt'
-# solver_name = 'gurobi'
-# solver_name = 'qpoases'
+x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0*(np.pi/180.)]
+u_init_val = [0.0, 0.0, 0.0]
+solver_name = 'gurobi'
 opts_dict = {'print_time': 0}
 no_printing = True
 code_gen = False
 show_anim = True
 #  -------------------------------------------------------------------
-## get string name
-prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(code_gen)
-#  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
-dt = 1.0/freq # sampling time
+N_xu = N_x + N_u # number of optimization variables
+N_z = N_i*Mm.size
+N_MPC = np.sum(Mm) # time horizon for the MPC controller
+N_m = Mm.size
 N = T*freq # total number of iterations
-T_MPC = N_MPC*dt
-NN = N + N_MPC # total number of steps
 Nidx = int(N)
-# Nidx = 3*25
+# Nidx = 3
+NN = N + N_MPC # total number of steps
+dt = 1.0/freq # sampling time
+N_var = (N_xu)*N_MPC
+# Area integral of norm of the distance for a square:
+int_square = lambda a: dblquad(lambda x,y: np.sqrt(x**2 + y**2), -a/2, a/2, -a/2, a/2)[0]
+int_A = int_square(a)
+#  -------------------------------------------------------------------
+## get string name
+prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(code_gen)
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -76,16 +89,18 @@ dx = cs.SX.sym('dx', 4)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
-# u[2] - relative sliding velocity between pusher and slider up
-# u[3] - relative sliding velocity between pusher and slider down
+# u[2] - relative sliding velocity between pusher and slider
 u = cs.SX.sym('u', N_u)
-u_red_func = cs.Function('u_red_func', [u], [cs.vertcat(u[0], u[1], u[2]-u[3])])
-u_ = u_red_func(u)
 # b - dynamic parameters
 # b[0] - slider lenght [m]
 # b[1] - radious of the pusher [m]
 beta = [a, r_pusher]
-#  -------------------------------------------------------------------
+# z - modes
+# z[0] - Sticking mode
+# z[1] - Sliding up mode
+# z[2] - Sliding down mode
+z = cs.SX.sym('x', N_i)
+#  ------------------------------------------------------------------
 
 ## Build Motion Model
 #  -------------------------------------------------------------------
@@ -93,7 +108,7 @@ R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface
 #  -------------------------------------------------------------------
 p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
-f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x, u_, beta)],['x','u'],['xdot'])
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Compute Jacobians
@@ -128,7 +143,7 @@ x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 # control path variables
-u_nom_full = cs.SX.sym('u_nom_full', N_u, NN-1)
+u_nom = cs.SX.sym('u_nom', N_u, NN-1)
 #  ------------------------------------------------------------------
 # declare cost function
 W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
@@ -138,23 +153,23 @@ cost_F = cost_f.map(NN-1)
 #  -------------------------------------------------------------------
 opt = my_opt.OptVars()
 # define cost function
-opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom_full))
+opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom))
 # define optimization variables
-opt.x = cs.vertcat(*u_nom_full.elements())
+opt.x = cs.vertcat(*u_nom.elements())
 # define Sticking constraint
-opt.g = cs.horzcat(*fric_cone_C(u_nom_full).elements())
+opt.g = cs.horzcat(*fric_cone_C(u_nom).elements())
 #  -------------------------------------------------------------------
 # Generating solver
 prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #  -------------------------------------------------------------------
-# Instantiating optimizer arguments
+# Instanciating optimizer arguments
 args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((NN-1)*N_u)
 # opt var boundaries
-args.lbx = [0.0,   -cs.inf, 0.0, 0.0]*(NN-1)
-args.ubx = [cs.inf, cs.inf, 0.0, 0.0]*(NN-1)
+args.lbx = [0.0, -cs.inf, 0.0]*(NN-1)
+args.ubx = [cs.inf, cs.inf, 0.0]*(NN-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((NN-1)*2)
 args.ubg = [cs.inf]*((NN-1)*2)
@@ -162,7 +177,7 @@ args.ubg = [cs.inf]*((NN-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u],u_sol[3::N_u]).T
+U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -175,33 +190,46 @@ X_nom = cs.SX.sym('x_nom', N_x, N_MPC)
 U_nom = cs.SX.sym('u_nom', N_u, N_MPC-1)
 X = X_bar + X_nom
 U = U_bar + U_nom
-# U_red_mpc = u_red_func.map(N_MPC-1)
-# U_ = U_red_mpc(U)
 ## ---- Initial state and action variables ----
 x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
+## ---- discrete variables ----
+Zm = cs.SX.sym('z', N_i, N_m)
+Z = cs.repmat(Zm[:, 0], 1, Mm[0])
+for i in range(1, N_m):
+    Z = cs.horzcat(Z, cs.repmat(Zm[:, i], 1, Mm[i]))
+Z_val = cs.SX.zeros(3,1)
+Z_val[0] = 1
+Zm0 = cs.DM(cs.repmat(Z_val, 1, N_m))
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-## ---- Define optimization objective ----------
-Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0])); QcostN = Qcost
-Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0,0.0]))
-# Rcost = cs.diag(cs.SX([0.0,0.0,0.0,0.0]))
+opt = my_opt.OptVars()
+args = my_opt.OptArgs()
+## ---- Set optimization objective ----------
+Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0.0])); QcostN = Qcost
+Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
+# Rcost = cs.diag(cs.SX([0.0,0.0,0.0]))
+wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.1, 0.1])
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
 cost_F = cost_f.map(N_MPC-1)
-## ---- Initialize optimization and argument variables ---
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+w_zi = cs.SX.sym('w_zi') # weight of the mode i
+Nmi = cs.SX.sym('Nmi') # number of samples for mode i
+cost_z = cs.Function('cost_z', [w_zi, Nmi, z], [Nmi*cs.dot(z,w_zi*z)])
+cost_Z = cost_z.map(N_m)
 ## ---- cost function ----
-opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
+opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar))
+opt.f += cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
+# opt.f += cs.sum2(cost_Z(wcost, Mm, Zm))
 ## ---- Set optimization variables ----
 opt.x = []
 args.x0 = []
 args.lbx = []
 args.ubx = []
+opt.discrete = []
 for i in range(N_MPC-1):
     ## ---- Add States to optimization variables ---
     opt.x += X_bar[:,i].elements()
@@ -210,45 +238,57 @@ for i in range(N_MPC-1):
     args.ubx += [cs.inf]*(N_x-1)
     args.lbx += [-psi_lim]
     args.ubx += [psi_lim]
+    opt.discrete += [False]*N_x
     ## ---- Add Actions to optimization variables ---
     opt.x += U_bar[:,i].elements()
     args.x0 += U_nom_val[:,i].elements()
     args.lbx += [-cs.inf]*N_u
     args.ubx += [cs.inf]*N_u
+    opt.discrete += [False]*N_u
 opt.x += X_bar[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
 args.lbx += [-cs.inf]*(N_x-1)
 args.ubx += [cs.inf]*(N_x-1)
 args.lbx += [-psi_lim]
 args.ubx += [psi_lim]
+opt.discrete += [False]*N_x
+for i in range(N_m):
+    opt.x += Zm[:,i].elements()
+    args.x0 += Zm0[:,i].elements()
+    args.lbx += [0]*N_u
+    args.ubx += [1]*N_u
+    opt.discrete += [True]*N_i
 ## ---- Set optimzation constraints ----
-opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
-args.lbg = [0.0]*N_x
-args.ubg = [0.0]*N_x
+# opt.g = []
+opt.g = [X[:,0]-x_init] ## Initial Conditions
+args.lbg = [0]*N_x
+args.ubg = [0]*N_x
 for i in range(N_MPC-1):
     ## ---- Dynamic constraints ---- 
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
     args.lbg += [0]*N_x
     args.ubg += [0]*N_x
     ## ---- Friction cone constraints ----
-    opt.g += fric_cone_c(U[:,i]).elements()
+    opt.g += (fric_cone_c(U[:,i]) + bigM*cs.vertcat(Z[1,i], Z[2,i])).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
-    # opt.g += [U[1,i]*U[2,i]]
-    # args.lbg += [0.0]
-    # args.ubg += [cs.inf]
-    # opt.g += [((miu_p**2)*(U[0,i]**2)-(U[1,i]**2))*U[2,i]]
-    # # opt.g += [(miu_p*U[0,i]-cs.fabs(U[1,i]))*U[2,i]]
-    # args.lbg += [0.0]
-    # args.ubg += [0.0]
-    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
-    args.lbg += [0.0]
-    args.ubg += [0.0]
+    opt.g += (fric_cone_c(U[:,i]) - bigM*cs.vertcat(1-Z[2,i], 1-Z[1,i])).elements()
+    args.lbg += [-cs.inf]*2
+    args.ubg += [0.0]*2
+    opt.g += [U_bar[2,i] + bigM*Z[2,i] + epsilon*Z[0,i]]
+    opt.g += [U_bar[2,i] - bigM*Z[1,i] - epsilon*Z[0,i]]
+    args.lbg += [epsilon, -cs.inf]
+    args.ubg += [cs.inf,  -epsilon]
     ## ---- Action Constraints ---- 
     # [normal vel, tangential vel, relative sliding vel]
     opt.g += U[:,i].elements()
-    args.lbg += [0.0,  -f_lim,         0.0,          0.0]
-    args.ubg += [f_lim, f_lim, psi_dot_lim,  psi_dot_lim]
+    args.lbg += [0.0,  -f_lim, -psi_dot_lim]
+    args.ubg += [f_lim, f_lim,  psi_dot_lim]
+for i in range(N_m):
+    ## Integer summation
+    opt.g += [cs.sum1(Zm[:,i])]
+    args.lbg += [1.0]
+    args.ubg += [1.0]
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += x_init.elements()
@@ -256,25 +296,12 @@ opt.p += u_init.elements()
 opt.p += X_nom.elements()
 opt.p += U_nom.elements()
 ## ---- Set solver options ----
-if solver_name == 'ipopt':
-    if no_printing: opts_dict['ipopt.print_level'] = 0
-if solver_name == 'snopt':
-    if no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
-if solver_name == 'qpoases':
-    if no_printing: opts_dict['printLevel'] = 'none'
-    opts_dict['sparse'] = True
+opts_dict['discrete'] = opt.discrete # add integer variables
 if solver_name == 'gurobi':
     if no_printing: opts_dict['gurobi.OutputFlag'] = 0
 ## ---- Create solver ----
 prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
-if (solver_name == 'ipopt') or (solver_name == 'snopt'):
-    solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
-    if code_gen:
-        if not os.path.isfile('./' + prog_name + '.so'):
-            solver.generate_dependencies(prog_name + '.c')
-            os.system('gcc -fPIC -shared -O3 ' + prog_name + '.c -o ' + prog_name + '.so')
-        solver = cs.nlpsol('solver', solver_name, prog_name + '.so', opts_dict)
-elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
+if (solver_name == 'gurobi'):
     solver = cs.qpsol('solver', solver_name, prob, opts_dict)
 #  -------------------------------------------------------------------
 
@@ -282,6 +309,7 @@ elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
 #  -------------------------------------------------------------------
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
+Z_plot = np.empty([N_i, Nidx])
 X_plot[:,0] = x_init_val
 X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
@@ -293,8 +321,8 @@ success = np.empty(Nidx-1)
 x0 = x_init_val
 u0 = u_init_val
 for idx in range(Nidx-1):
-    ## ---- setting parameters ---- 
-    args.p = [] # set to empty before reinitialize
+    ## setting parameters
+    args.p = []
     args.p += x0
     args.p += u0
     args.p += X_nom_val[:,idx:(idx+N_MPC)].elements()
@@ -307,41 +335,46 @@ for idx in range(Nidx-1):
         success[idx] = 1
     else:
         success[idx] = 0
-    x_opt = sol['x']
+    xz_opt = sol['x']
+    x_opt = xz_opt[0:(N_MPC*N_xu-N_u)]
+    z_opt = xz_opt[(N_MPC*N_xu-N_u):(N_MPC*N_xu-N_u+N_z)]
+    x_i = sol['x'][(N_MPC*N_xu-N_u):]
     # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
     X_bar_opt = cs.horzcat(x_opt[0::N_xu],x_opt[1::N_xu],x_opt[2::N_xu],x_opt[3::N_xu]).T
-    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu],x_opt[7::N_xu]).T
+    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu]).T
+    X_bar_opt = X_bar_opt
+    U_bar_opt = U_bar_opt
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
-    ## ---- Update initial conditions ----
+    ## ---- Update initial conditions and warm start ----
     u0 = U_opt[:,0].elements()
     # x0 = X_opt[:,1].elements()
     x0 = (x0 + f_func(x0, u0)*dt).elements()
+    # print(x0[N_x-1]*(180/np.pi))
     ## ---- Store values for plotting ----
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
+    Z_plot[:,idx] = z_opt[0:N_i].T
     X_future[:,:,idx] = np.array(X_opt)
     # ---- warm start ---- 
-    x_opt[0::N_xu] = [0.0]*(N_MPC)
-    x_opt[1::N_xu] = [0.0]*(N_MPC)
-    x_opt[2::N_xu] = [0.0]*(N_MPC)
-    x_opt[3::N_xu] = [0.0]*(N_MPC)
+    # x_opt[0::N_xu] = [0.0]*(N_MPC)
+    # x_opt[1::N_xu] = [0.0]*(N_MPC)
+    # x_opt[2::N_xu] = [0.0]*(N_MPC)
+    # x_opt[3::N_xu] = [0.0]*(N_MPC)
     # x_opt[4::N_xu] = [0.0]*(N_MPC-1)
     # x_opt[5::N_xu] = [0.0]*(N_MPC-1)
-    x_opt[6::N_xu] = [0.0]*(N_MPC-1)
-    x_opt[7::N_xu] = [0.0]*(N_MPC-1)
-    args.x0 = x_opt.elements()
-    # args.x0 = [0.0]*(len(args.x0))
+    # x_opt[6::N_xu] = [0.0]*(N_MPC-1)
+    args.x0 = cs.vertcat(x_opt,z_opt).elements()
 #  -------------------------------------------------------------------
 # show sparsity pattern
-# my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), x_opt)
+# my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xz_opt)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(5, 2, sharex=True, figsize=(12,8))
+fig, axs = plt.subplots(6, 2, sharex=True, figsize=(12,8))
 t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx]
@@ -363,22 +396,22 @@ axs[1,0].legend(handles, labels)
 axs[1,0].set_ylabel('x1')
 axs[1,0].grid()
 #  -------------------------------------------------------------------
-axs[2,0].plot(t_N_x, X_nom_val[2,0:N]*(180/np.pi), color='b', label='nom')
-axs[2,0].plot(t_idx_x, X_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+axs[2,0].plot(t_N_x, X_nom_val[2,0:N], color='b', label='nom')
+axs[2,0].plot(t_idx_x, X_plot[2,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[2,0].get_legend_handles_labels()
 axs[2,0].legend(handles, labels)
 axs[2,0].set_ylabel('x2')
 axs[2,0].grid()
 #  -------------------------------------------------------------------
-axs[3,0].plot(t_N_x, X_nom_val[3,0:N]*(180/np.pi), color='b', label='nom')
-axs[3,0].plot(t_idx_x, X_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+axs[3,0].plot(t_N_x, X_nom_val[3,0:N], color='b', label='nom')
+axs[3,0].plot(t_idx_x, X_plot[3,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[3,0].get_legend_handles_labels()
 axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
 axs[3,0].grid()
 #  -------------------------------------------------------------------
-axs[4,0].plot(t_idx_u, fric_cone_val[0,:].T, color='b', label='left')
-axs[4,0].plot(t_idx_u, fric_cone_val[1,:].T, color='g', label='right')
+axs[4,0].plot(t_idx_u, fric_cone_val[1,:].T, color='b', label='up')
+axs[4,0].plot(t_idx_u, fric_cone_val[0,:].T, color='g', label='down')
 axs[4,0].plot(t_idx_u, (U_plot[2,:].T)*0.01, color='r', label='psi_dot')
 handles, labels = axs[4,0].get_legend_handles_labels()
 axs[4,0].legend(handles, labels)
@@ -400,8 +433,8 @@ axs[1,1].legend(handles, labels)
 axs[1,1].set_ylabel('u1')
 axs[1,1].grid()
 #  -------------------------------------------------------------------
-axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1].T*(180/np.pi), color='b', label='nom')
-axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
+axs[2,1].plot(t_N_u, U_nom_val[2,0:N-1].T, color='b', label='nom')
+axs[2,1].plot(t_idx_u, U_plot[2,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[2,1].get_legend_handles_labels()
 axs[2,1].legend(handles, labels)
 axs[2,1].set_ylabel('u2')
@@ -413,13 +446,21 @@ axs[3,1].legend(handles, labels)
 axs[3,1].set_ylabel('time [s]')
 axs[3,1].grid()
 #  -------------------------------------------------------------------
-axs[4,1].plot(t_idx_u, (U_plot[1,:]*U_plot[2,:]).T, color='g', label='u1*u2')
-axs[4,1].plot(t_idx_u, 0.01*success, color='r', label='succ')
+axs[4,1].plot(t_idx_x, Z_plot[0,:], color='r', label='sticky')
+axs[4,1].plot(t_idx_x, Z_plot[1,:], color='b', label='up')
+axs[4,1].plot(t_idx_x, Z_plot[2,:], color='g', label='down')
 handles, labels = axs[4,1].get_legend_handles_labels()
 axs[4,1].legend(handles, labels)
-axs[4,1].set_xlabel('time [s]')
-axs[4,1].set_ylabel('u1*u2')
+axs[4,1].set_ylabel('modes')
 axs[4,1].grid()
+#  -------------------------------------------------------------------
+axs[5,1].plot(t_idx_u, (U_plot[1,:]*U_plot[2,:]).T, color='g', label='u1*u2')
+axs[5,1].plot(t_idx_u, 0.01*success, color='r', label='succ')
+handles, labels = axs[5,1].get_legend_handles_labels()
+axs[5,1].legend(handles, labels)
+axs[5,1].set_xlabel('time [s]')
+axs[5,1].set_ylabel('u1*u2')
+axs[5,1].grid()
 #  -------------------------------------------------------------------
 
 # Animation
@@ -428,8 +469,6 @@ if show_anim:
 #  -------------------------------------------------------------------
     fig, ax = my_plots.plot_nominal_traj(x0_nom[0:N], x1_nom[0:N])
     # get slider and pusher patches
-    x0 = np.array(X_plot[:,0].T)
-    d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]
     slider, pusher, path_past, path_future = my_plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
@@ -443,10 +482,9 @@ if show_anim:
             frames=Nidx-1,
             interval=dt*1000,
             blit=True,
-            repeat=False,
-    )
+            repeat=False)
     ## to save animation, uncomment the line below:
-    # ani.save('MPC_QP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('MPC_MIQP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------

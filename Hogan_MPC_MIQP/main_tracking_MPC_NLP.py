@@ -2,9 +2,9 @@
 ## Date: 21/08/2020
 #  -------------------------------------------------------------------
 ## Description:
-#  This script implements a quadratic programming (QP) optimal controller (OC)
-#  for tracking a line trajectory of a square slider object with a single
-#  and fixed contacter pusher.
+#  This script implements a non-linear program (NLP) model predictive controller (MPC)
+#  for tracking a trajectory of a square slider object with a single
+#  and sliding contact pusher.
 #  -------------------------------------------------------------------
 
 ## Import Libraries
@@ -27,20 +27,23 @@ import my_opt
 ## Set Problem constants
 #  -------------------------------------------------------------------
 N_x = 4
-N_u = 3
+N_u = 4
+N_xu = N_x + N_u # number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
-miu_p = 0.3 # coeficient of friction between pusher and slider
+miu_p = 0.2 # coefficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
-freq = 25 # numer of increments per second
-r_pusher = 0.01 # radious of the cilindrical pusher in meter
+freq = 25 # number of increments per second
+r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 N_MPC = 63 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
-u_init_val = [0.0, 0.0, 0.0]
-f_lim = 0.2 # limit on the actuations
+u_init_val = [0.0, 0.0, 0.0, 0.0]
+f_lim = 0.3 # limit on the actuations
+psi_dot_lim = 3.0 # limit on the actuations
+psi_lim = 40*(np.pi/180.0)
 # solver_name = 'ipopt'
-# solver_name = 'snopt'
-solver_name = 'gurobi'
+solver_name = 'snopt'
+# solver_name = 'gurobi'
 # solver_name = 'qpoases'
 opts_dict = {'print_time': 0}
 no_printing = True
@@ -56,6 +59,8 @@ dt = 1.0/freq # sampling time
 N = T*freq # total number of iterations
 T_MPC = N_MPC*dt
 NN = N + N_MPC # total number of steps
+Nidx = int(N)
+# Nidx = 3*25
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -71,8 +76,11 @@ dx = cs.SX.sym('dx', 4)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
-# u[2] - relative sliding velocity between pusher and slider
+# u[2] - relative sliding velocity between pusher and slider up
+# u[3] - relative sliding velocity between pusher and slider down
 u = cs.SX.sym('u', N_u)
+u_red_func = cs.Function('u_red_func', [u], [cs.vertcat(u[0], u[1], u[2]-u[3])])
+u_ = u_red_func(u)
 # b - dynamic parameters
 # b[0] - slider lenght [m]
 # b[1] - radious of the pusher [m]
@@ -85,7 +93,7 @@ R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface
 #  -------------------------------------------------------------------
 p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
-f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x, u, beta)],['x','u'],['xdot'])
+f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x, u_, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Compute Jacobians
@@ -106,14 +114,15 @@ dyn_err_f = cs.Function('dyn_err_f', [x, u, x_bar, x_bar_next, u_bar],
 ## ---- Define Control constraints ----
 fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
 fric_cone_C = fric_cone_c.map(NN-1)
+fric_cone_idx = fric_cone_c.map(Nidx-1)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -144,8 +153,8 @@ args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((NN-1)*N_u)
 # opt var boundaries
-args.lbx = [0.0,   -cs.inf, 0.0]*(NN-1)
-args.ubx = [cs.inf, cs.inf, 0.0]*(NN-1)
+args.lbx = [0.0,   -cs.inf, 0.0, 0.0]*(NN-1)
+args.ubx = [cs.inf, cs.inf, 0.0, 0.0]*(NN-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((NN-1)*2)
 args.ubg = [cs.inf]*((NN-1)*2)
@@ -153,8 +162,7 @@ args.ubg = [cs.inf]*((NN-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-# U_nom_val = np.array(cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T)
-U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u]).T
+U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u],u_sol[3::N_u]).T
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -167,6 +175,8 @@ X_nom = cs.SX.sym('x_nom', N_x, N_MPC)
 U_nom = cs.SX.sym('u_nom', N_u, N_MPC-1)
 X = X_bar + X_nom
 U = U_bar + U_nom
+# U_red_mpc = u_red_func.map(N_MPC-1)
+# U_ = U_red_mpc(U)
 ## ---- Initial state and action variables ----
 x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
@@ -176,8 +186,8 @@ u_init = cs.SX.sym('u0', N_u)
 #  -------------------------------------------------------------------
 ## ---- Define optimization objective ----------
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0])); QcostN = Qcost
-Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
-# Rcost = cs.diag(cs.SX([0.0,0.0,0.0]))
+Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0,0.0]))
+# Rcost = cs.diag(cs.SX([0.0,0.0,0.0,0.0]))
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
@@ -196,8 +206,10 @@ for i in range(N_MPC-1):
     ## ---- Add States to optimization variables ---
     opt.x += X_bar[:,i].elements()
     args.x0 += X_nom_val[:,i].elements()
-    args.lbx += [-cs.inf]*N_x
-    args.ubx += [cs.inf]*N_x
+    args.lbx += [-cs.inf]*(N_x-1)
+    args.ubx += [cs.inf]*(N_x-1)
+    args.lbx += [-psi_lim]
+    args.ubx += [psi_lim]
     ## ---- Add Actions to optimization variables ---
     opt.x += U_bar[:,i].elements()
     args.x0 += U_nom_val[:,i].elements()
@@ -205,26 +217,38 @@ for i in range(N_MPC-1):
     args.ubx += [cs.inf]*N_u
 opt.x += X_bar[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
-args.lbx += [-cs.inf]*N_x
-args.ubx += [cs.inf]*N_x
+args.lbx += [-cs.inf]*(N_x-1)
+args.ubx += [cs.inf]*(N_x-1)
+args.lbx += [-psi_lim]
+args.ubx += [psi_lim]
 ## ---- Set optimzation constraints ----
 opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
 args.lbg = [0.0]*N_x
 args.ubg = [0.0]*N_x
 for i in range(N_MPC-1):
-    ## Dynamic constraints
+    ## ---- Dynamic constraints ---- 
     opt.g += dyn_err_f(X_nom[:,i], U_nom[:,i], X_bar[:,i], X_bar[:,i+1], U_bar[:,i]).elements()
     args.lbg += [0]*N_x
     args.ubg += [0]*N_x
-    ## Control constraints
+    ## ---- Friction cone constraints ----
     opt.g += fric_cone_c(U[:,i]).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
-    ## Constraints on actions
+    # opt.g += [U[1,i]*U[2,i]]
+    # args.lbg += [0.0]
+    # args.ubg += [cs.inf]
+    # opt.g += [((miu_p**2)*(U[0,i]**2)-(U[1,i]**2))*U[2,i]]
+    # # opt.g += [(miu_p*U[0,i]-cs.fabs(U[1,i]))*U[2,i]]
+    # args.lbg += [0.0]
+    # args.ubg += [0.0]
+    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
+    args.lbg += [0.0]
+    args.ubg += [0.0]
+    ## ---- Action Constraints ---- 
     # [normal vel, tangential vel, relative sliding vel]
     opt.g += U[:,i].elements()
-    args.lbg += [0.0,  -f_lim, 0.0]
-    args.ubg += [f_lim, f_lim, 0.0]
+    args.lbg += [0.0,  -f_lim,         0.0,          0.0]
+    args.ubg += [f_lim, f_lim, psi_dot_lim,  psi_dot_lim]
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += x_init.elements()
@@ -256,13 +280,12 @@ elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-Nidx = int(N)
-# Nidx = 10
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
 X_plot[:,0] = x_init_val
 X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
+success = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 
 ## Set arguments and solve
@@ -279,14 +302,17 @@ for idx in range(Nidx-1):
     ## ---- Solve the optimization ----
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    stats = solver.stats()
+    if stats['success'] == True:
+        success[idx] = 1
+    else:
+        success[idx] = 0
     x_opt = sol['x']
-    # ---- warm start ---- 
-    args.x0 = x_opt.elements()
     # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
-    X_bar_opt = cs.horzcat(x_opt[0::7],x_opt[1::7],x_opt[2::7],x_opt[3::7]).T
-    U_bar_opt = cs.horzcat(x_opt[4::7],x_opt[5::7],x_opt[6::7]).T
+    X_bar_opt = cs.horzcat(x_opt[0::N_xu],x_opt[1::N_xu],x_opt[2::N_xu],x_opt[3::N_xu]).T
+    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu],x_opt[7::N_xu]).T
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions ----
@@ -297,6 +323,17 @@ for idx in range(Nidx-1):
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
     X_future[:,:,idx] = np.array(X_opt)
+    # ---- warm start ---- 
+    x_opt[0::N_xu] = [0.0]*(N_MPC)
+    x_opt[1::N_xu] = [0.0]*(N_MPC)
+    x_opt[2::N_xu] = [0.0]*(N_MPC)
+    x_opt[3::N_xu] = [0.0]*(N_MPC)
+    # x_opt[4::N_xu] = [0.0]*(N_MPC-1)
+    # x_opt[5::N_xu] = [0.0]*(N_MPC-1)
+    x_opt[6::N_xu] = [0.0]*(N_MPC-1)
+    x_opt[7::N_xu] = [0.0]*(N_MPC-1)
+    args.x0 = x_opt.elements()
+    # args.x0 = [0.0]*(len(args.x0))
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), x_opt)
@@ -304,12 +341,13 @@ for idx in range(Nidx-1):
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(4, 2, sharex=True, figsize=(12,8))
+fig, axs = plt.subplots(5, 2, sharex=True, figsize=(12,8))
 t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx]
 t_idx_u = t_N_x[0:Nidx-1]
 X_nom_val = np.array(X_nom_val)
+fric_cone_val = fric_cone_idx(U_plot)
 #  -------------------------------------------------------------------
 axs[0,0].plot(t_N_x, X_nom_val[0,0:N], color='b', label='nom')
 axs[0,0].plot(t_idx_x, X_plot[0,:], color='g', linestyle='--', label='opt')
@@ -339,6 +377,15 @@ axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
 axs[3,0].grid()
 #  -------------------------------------------------------------------
+axs[4,0].plot(t_idx_u, fric_cone_val[0,:].T, color='b', label='left')
+axs[4,0].plot(t_idx_u, fric_cone_val[1,:].T, color='g', label='right')
+axs[4,0].plot(t_idx_u, (U_plot[2,:].T)*0.01, color='r', label='psi_dot')
+handles, labels = axs[4,0].get_legend_handles_labels()
+axs[4,0].legend(handles, labels)
+axs[4,0].set_xlabel('time [s]')
+axs[4,0].set_ylabel('fric cone')
+axs[4,0].grid()
+#  -------------------------------------------------------------------
 axs[0,1].plot(t_N_u, U_nom_val[0,0:N-1].T, color='b', label='nom')
 axs[0,1].plot(t_idx_u, U_plot[0,:], color='g', linestyle='--', label='opt')
 handles, labels = axs[0,1].get_legend_handles_labels()
@@ -363,9 +410,16 @@ axs[2,1].grid()
 axs[3,1].plot(t_idx_u, comp_time, color='b')
 handles, labels = axs[3,1].get_legend_handles_labels()
 axs[3,1].legend(handles, labels)
-axs[3,1].set_xlabel('time [s]')
 axs[3,1].set_ylabel('time [s]')
 axs[3,1].grid()
+#  -------------------------------------------------------------------
+axs[4,1].plot(t_idx_u, (U_plot[1,:]*U_plot[2,:]).T, color='g', label='u1*u2')
+axs[4,1].plot(t_idx_u, 0.01*success, color='r', label='succ')
+handles, labels = axs[4,1].get_legend_handles_labels()
+axs[4,1].legend(handles, labels)
+axs[4,1].set_xlabel('time [s]')
+axs[4,1].set_ylabel('u1*u2')
+axs[4,1].grid()
 #  -------------------------------------------------------------------
 
 # Animation
@@ -392,7 +446,7 @@ if show_anim:
             repeat=False,
     )
     ## to save animation, uncomment the line below:
-    # ani.save('MPC_QP_line.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
