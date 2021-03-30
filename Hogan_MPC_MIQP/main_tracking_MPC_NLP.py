@@ -27,7 +27,7 @@ import my_opt
 ## Set Problem constants
 #  -------------------------------------------------------------------
 N_x = 4
-N_u = 4
+N_u = 5
 N_xu = N_x + N_u # number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.2 # coefficient of friction between pusher and slider
@@ -37,7 +37,7 @@ r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 N_MPC = 63 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
-u_init_val = [0.0, 0.0, 0.0, 0.0]
+u_init_val = [0.0, 0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
 psi_dot_lim = 3.0 # limit on the actuations
 psi_lim = 40*(np.pi/180.0)
@@ -60,7 +60,7 @@ N = T*freq # total number of iterations
 T_MPC = N_MPC*dt
 NN = N + N_MPC # total number of steps
 Nidx = int(N)
-# Nidx = 3*25
+# Nidx = 4*25
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -72,12 +72,13 @@ Nidx = int(N)
 # x[3] - angle of pusher relative to slider
 x = cs.SX.sym('x', N_x)
 # dx - state vector derivative
-dx = cs.SX.sym('dx', 4)
+dx = cs.SX.sym('dx', N_x)
 # u - control vector
 # u[0] - normal force in the local frame
 # u[1] - tangential force in the local frame
 # u[2] - relative sliding velocity between pusher and slider up
 # u[3] - relative sliding velocity between pusher and slider down
+# u[4] - complementary constraint slack variable
 u = cs.SX.sym('u', N_u)
 u_red_func = cs.Function('u_red_func', [u], [cs.vertcat(u[0], u[1], u[2]-u[3])])
 u_ = u_red_func(u)
@@ -153,8 +154,8 @@ args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((NN-1)*N_u)
 # opt var boundaries
-args.lbx = [0.0,   -cs.inf, 0.0, 0.0]*(NN-1)
-args.ubx = [cs.inf, cs.inf, 0.0, 0.0]*(NN-1)
+args.lbx = [0.0,   -cs.inf, 0.0, 0.0, 0.0]*(NN-1)
+args.ubx = [cs.inf, cs.inf, 0.0, 0.0, 0.0]*(NN-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((NN-1)*2)
 args.ubg = [cs.inf]*((NN-1)*2)
@@ -162,7 +163,7 @@ args.ubg = [cs.inf]*((NN-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u],u_sol[3::N_u]).T
+U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u],u_sol[3::N_u],u_sol[4::N_u]).T
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -175,8 +176,6 @@ X_nom = cs.SX.sym('x_nom', N_x, N_MPC)
 U_nom = cs.SX.sym('u_nom', N_u, N_MPC-1)
 X = X_bar + X_nom
 U = U_bar + U_nom
-# U_red_mpc = u_red_func.map(N_MPC-1)
-# U_ = U_red_mpc(U)
 ## ---- Initial state and action variables ----
 x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
@@ -186,7 +185,7 @@ u_init = cs.SX.sym('u0', N_u)
 #  -------------------------------------------------------------------
 ## ---- Define optimization objective ----------
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0])); QcostN = Qcost
-Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0,0.0]))
+Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0,0.0,100.0]))
 # Rcost = cs.diag(cs.SX([0.0,0.0,0.0,0.0]))
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
@@ -214,6 +213,7 @@ for i in range(N_MPC-1):
     opt.x += U_bar[:,i].elements()
     args.x0 += U_nom_val[:,i].elements()
     args.lbx += [-cs.inf]*N_u
+    # args.lbx += [0.0]
     args.ubx += [cs.inf]*N_u
 opt.x += X_bar[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
@@ -234,19 +234,13 @@ for i in range(N_MPC-1):
     opt.g += fric_cone_c(U[:,i]).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
-    # opt.g += [U[1,i]*U[2,i]]
-    # args.lbg += [0.0]
-    # args.ubg += [cs.inf]
-    # opt.g += [((miu_p**2)*(U[0,i]**2)-(U[1,i]**2))*U[2,i]]
-    # # opt.g += [(miu_p*U[0,i]-cs.fabs(U[1,i]))*U[2,i]]
-    # args.lbg += [0.0]
-    # args.ubg += [0.0]
-    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
+    ## Complementary constraint
+    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i] + U_bar[4,i]]
     args.lbg += [0.0]
     args.ubg += [0.0]
     ## ---- Action Constraints ---- 
     # [normal vel, tangential vel, relative sliding vel]
-    opt.g += U[:,i].elements()
+    opt.g += U[0:-1,i].elements()
     args.lbg += [0.0,  -f_lim,         0.0,          0.0]
     args.ubg += [f_lim, f_lim, psi_dot_lim,  psi_dot_lim]
 ## ---- Set optimization parameters ----
@@ -302,17 +296,19 @@ for idx in range(Nidx-1):
     ## ---- Solve the optimization ----
     start_time = time.time()
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    # ---- save computation time ---- 
+    comp_time[idx] = time.time() - start_time
+    print('--------------------------------')
+    print(idx,'out of',Nidx-1)
     stats = solver.stats()
     if stats['success'] == True:
         success[idx] = 1
     else:
         success[idx] = 0
     x_opt = sol['x']
-    # ---- save computation time ---- 
-    comp_time[idx] = time.time() - start_time
     ## ---- Compute actual trajectory and controls ----
     X_bar_opt = cs.horzcat(x_opt[0::N_xu],x_opt[1::N_xu],x_opt[2::N_xu],x_opt[3::N_xu]).T
-    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu],x_opt[7::N_xu]).T
+    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu],x_opt[7::N_xu],x_opt[8::N_xu]).T
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
     ## ---- Update initial conditions ----
@@ -413,12 +409,12 @@ axs[3,1].legend(handles, labels)
 axs[3,1].set_ylabel('time [s]')
 axs[3,1].grid()
 #  -------------------------------------------------------------------
-axs[4,1].plot(t_idx_u, (U_plot[1,:]*U_plot[2,:]).T, color='g', label='u1*u2')
+axs[4,1].plot(t_idx_u, U_plot[4,:].T, color='g', label='slack')
 axs[4,1].plot(t_idx_u, 0.01*success, color='r', label='succ')
 handles, labels = axs[4,1].get_legend_handles_labels()
 axs[4,1].legend(handles, labels)
 axs[4,1].set_xlabel('time [s]')
-axs[4,1].set_ylabel('u1*u2')
+axs[4,1].set_ylabel('u')
 axs[4,1].grid()
 #  -------------------------------------------------------------------
 
