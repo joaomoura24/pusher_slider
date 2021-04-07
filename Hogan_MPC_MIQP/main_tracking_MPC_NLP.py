@@ -35,7 +35,8 @@ T = 12 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
-N_MPC = 63 # time horizon for the MPC controller
+# N_MPC = 63 # time horizon for the MPC controller
+N_MPC = 15 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
@@ -60,7 +61,7 @@ N = T*freq # total number of iterations
 T_MPC = N_MPC*dt
 NN = N + N_MPC # total number of steps
 Nidx = int(N)
-# Nidx = 4*25
+# Nidx = 2
 #  -------------------------------------------------------------------
 
 ## Define state and control vectors
@@ -185,7 +186,7 @@ u_init = cs.SX.sym('u0', N_u)
 #  -------------------------------------------------------------------
 ## ---- Define optimization objective ----------
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0])); QcostN = Qcost
-Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0,0.0,100.0]))
+Rcost = 0.1*cs.diag(cs.SX([0.0,0.0,0.0,0.0,100.0]))
 # Rcost = cs.diag(cs.SX([0.0,0.0,0.0,0.0]))
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
@@ -236,6 +237,7 @@ for i in range(N_MPC-1):
     args.ubg += [cs.inf]*2
     ## Complementary constraint
     opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i] + U_bar[4,i]]
+    # opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
     args.lbg += [0.0]
     args.ubg += [0.0]
     ## ---- Action Constraints ---- 
@@ -252,8 +254,12 @@ opt.p += U_nom.elements()
 ## ---- Set solver options ----
 if solver_name == 'ipopt':
     if no_printing: opts_dict['ipopt.print_level'] = 0
+    opts_dict['ipopt.jac_d_constant'] = 'yes'
+    opts_dict['ipopt.warm_start_init_point'] = 'yes'
+    opts_dict['ipopt.hessian_constant'] = 'yes'
 if solver_name == 'snopt':
     if no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
+    opts_dict['snopt']['Hessian updates'] = 1
 if solver_name == 'qpoases':
     if no_printing: opts_dict['printLevel'] = 'none'
     opts_dict['sparse'] = True
@@ -320,14 +326,15 @@ for idx in range(Nidx-1):
     U_plot[:,idx] = u0
     X_future[:,:,idx] = np.array(X_opt)
     # ---- warm start ---- 
-    x_opt[0::N_xu] = [0.0]*(N_MPC)
-    x_opt[1::N_xu] = [0.0]*(N_MPC)
-    x_opt[2::N_xu] = [0.0]*(N_MPC)
-    x_opt[3::N_xu] = [0.0]*(N_MPC)
-    # x_opt[4::N_xu] = [0.0]*(N_MPC-1)
-    # x_opt[5::N_xu] = [0.0]*(N_MPC-1)
+    # x_opt[0::N_xu] = [0.0]*(N_MPC)
+    # x_opt[1::N_xu] = [0.0]*(N_MPC)
+    # x_opt[2::N_xu] = [0.0]*(N_MPC)
+    # x_opt[3::N_xu] = [0.0]*(N_MPC)
+    x_opt[4::N_xu] = [0.0]*(N_MPC-1)
+    x_opt[5::N_xu] = [0.0]*(N_MPC-1)
     x_opt[6::N_xu] = [0.0]*(N_MPC-1)
     x_opt[7::N_xu] = [0.0]*(N_MPC-1)
+    x_opt[8::N_xu] = [0.0]*(N_MPC-1)
     args.x0 = x_opt.elements()
     # args.x0 = [0.0]*(len(args.x0))
 #  -------------------------------------------------------------------
@@ -376,6 +383,7 @@ axs[3,0].grid()
 axs[4,0].plot(t_idx_u, fric_cone_val[0,:].T, color='b', label='left')
 axs[4,0].plot(t_idx_u, fric_cone_val[1,:].T, color='g', label='right')
 axs[4,0].plot(t_idx_u, (U_plot[2,:].T)*0.01, color='r', label='psi_dot')
+axs[4,0].plot(t_idx_u, (U_plot[3,:].T)*0.01, color='y', label='psi_dot')
 handles, labels = axs[4,0].get_legend_handles_labels()
 axs[4,0].legend(handles, labels)
 axs[4,0].set_xlabel('time [s]')
@@ -442,7 +450,7 @@ if show_anim:
             repeat=False,
     )
     ## to save animation, uncomment the line below:
-    ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------

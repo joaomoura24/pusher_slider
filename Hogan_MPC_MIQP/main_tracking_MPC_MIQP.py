@@ -42,7 +42,10 @@ T = 12 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # Mm = np.array([1, 5, 5, 5, 5, 5, 5, 4]) # mode scheduling
-Mm = np.array([1, 2, 4, 8, 16, 32]) # mode scheduling
+# Mm = np.ones((15,), dtype=int)
+# Mm = np.array([1, 2, 4, 8, 16, 32]) # mode scheduling
+# Mm = np.array([1, 2, 4, 8]) # mode scheduling
+Mm = np.array([1, 5, 5, 4]) # mode scheduling
 bigM = 500 # big M for the Mixed Integer optimization
 epsilon = 0.0
 f_lim = 0.3 # limit on the actuations
@@ -209,8 +212,8 @@ opt = my_opt.OptVars()
 args = my_opt.OptArgs()
 ## ---- Set optimization objective ----------
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0.0])); QcostN = Qcost
-Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
-# Rcost = cs.diag(cs.SX([0.0,0.0,0.0]))
+# Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))
+Rcost = cs.diag(cs.SX([0.0,0.0,0.0]))
 wcost = cs.SX([0.0, 0.3, 0.1, 0.1, 0.1, 0.1])
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
@@ -403,8 +406,8 @@ axs[2,0].legend(handles, labels)
 axs[2,0].set_ylabel('x2')
 axs[2,0].grid()
 #  -------------------------------------------------------------------
-axs[3,0].plot(t_N_x, X_nom_val[3,0:N], color='b', label='nom')
-axs[3,0].plot(t_idx_x, X_plot[3,:], color='g', linestyle='--', label='opt')
+axs[3,0].plot(t_N_x, X_nom_val[3,0:N]*(180./np.pi), color='b', label='nom')
+axs[3,0].plot(t_idx_x, X_plot[3,:]*(180./np.pi), color='g', linestyle='--', label='opt')
 handles, labels = axs[3,0].get_legend_handles_labels()
 axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
