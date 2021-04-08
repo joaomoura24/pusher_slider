@@ -27,8 +27,9 @@ import my_opt
 ## Set Problem constants
 #  -------------------------------------------------------------------
 N_x = 4
-N_u = 5
-N_xu = N_x + N_u # number of optimization variables
+N_u = 4
+N_s = 1
+N_xu = N_x + N_u + N_s# number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.2 # coefficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
@@ -38,7 +39,7 @@ r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 63 # time horizon for the MPC controller
 N_MPC = 15 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
-u_init_val = [0.0, 0.0, 0.0, 0.0, 0.0]
+u_init_val = [0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
 psi_dot_lim = 3.0 # limit on the actuations
 psi_lim = 40*(np.pi/180.0)
@@ -155,8 +156,8 @@ args = my_opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((NN-1)*N_u)
 # opt var boundaries
-args.lbx = [0.0,   -cs.inf, 0.0, 0.0, 0.0]*(NN-1)
-args.ubx = [cs.inf, cs.inf, 0.0, 0.0, 0.0]*(NN-1)
+args.lbx = [0.0,   -cs.inf, 0.0, 0.0]*(NN-1)
+args.ubx = [cs.inf, cs.inf, 0.0, 0.0]*(NN-1)
 # arg for sticking constraint
 args.lbg = [0.0]*((NN-1)*2)
 args.ubg = [cs.inf]*((NN-1)*2)
@@ -164,7 +165,7 @@ args.ubg = [cs.inf]*((NN-1)*2)
 # Solve optimization problem
 sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
-U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u],u_sol[3::N_u],u_sol[4::N_u]).T
+U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u],u_sol[3::N_u]).T
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -180,14 +181,16 @@ U = U_bar + U_nom
 ## ---- Initial state and action variables ----
 x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
+## ---- Slack variable for complementarity constraint ----
+del_cc = cs.SX.sym('del_cc', N_MPC-1)
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 ## ---- Define optimization objective ----------
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0])); QcostN = Qcost
-Rcost = 0.1*cs.diag(cs.SX([0.0,0.0,0.0,0.0,100.0]))
-# Rcost = cs.diag(cs.SX([0.0,0.0,0.0,0.0]))
+# Rcost = 0.1*cs.diag(cs.SX([0.0,0.0,0.0,0.0,100.0]))
+Rcost = cs.diag(cs.SX([0.0,0.0,0.0,0.0]))
 Q = cs.SX.sym('Q', N_x, N_x)
 cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
@@ -196,7 +199,11 @@ cost_F = cost_f.map(N_MPC-1)
 opt = my_opt.OptVars()
 args = my_opt.OptArgs()
 ## ---- cost function ----
-opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar)) + cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
+opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar))
+opt.f += cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 
+Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)
+Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
+opt.f += cs.sum1(Ks*(del_cc**2))
 ## ---- Set optimization variables ----
 opt.x = []
 args.x0 = []
@@ -214,8 +221,12 @@ for i in range(N_MPC-1):
     opt.x += U_bar[:,i].elements()
     args.x0 += U_nom_val[:,i].elements()
     args.lbx += [-cs.inf]*N_u
-    # args.lbx += [0.0]
     args.ubx += [cs.inf]*N_u
+    ## ---- Add slack variables ---
+    opt.x += del_cc[i].elements()
+    args.x0 += [0.0]
+    args.lbx += [-cs.inf]
+    args.ubx += [cs.inf]
 opt.x += X_bar[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
 args.lbx += [-cs.inf]*(N_x-1)
@@ -236,13 +247,13 @@ for i in range(N_MPC-1):
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
     ## Complementary constraint
-    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i] + U_bar[4,i]]
+    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i] + del_cc[i]]
     # opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
     args.lbg += [0.0]
     args.ubg += [0.0]
     ## ---- Action Constraints ---- 
-    # [normal vel, tangential vel, relative sliding vel]
-    opt.g += U[0:-1,i].elements()
+    # [normal vel, tangential vel, relative sliding vel +, relative sliding vel -]
+    opt.g += U[:,i].elements()
     args.lbg += [0.0,  -f_lim,         0.0,          0.0]
     args.ubg += [f_lim, f_lim, psi_dot_lim,  psi_dot_lim]
 ## ---- Set optimization parameters ----
@@ -282,6 +293,7 @@ elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
 #  -------------------------------------------------------------------
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
+del_plot = np.empty([1, Nidx-1])
 X_plot[:,0] = x_init_val
 X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
@@ -314,9 +326,10 @@ for idx in range(Nidx-1):
     x_opt = sol['x']
     ## ---- Compute actual trajectory and controls ----
     X_bar_opt = cs.horzcat(x_opt[0::N_xu],x_opt[1::N_xu],x_opt[2::N_xu],x_opt[3::N_xu]).T
-    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu],x_opt[7::N_xu],x_opt[8::N_xu]).T
+    U_bar_opt = cs.horzcat(x_opt[4::N_xu],x_opt[5::N_xu],x_opt[6::N_xu],x_opt[7::N_xu]).T
     X_opt = X_bar_opt + X_nom_val[:,idx:(idx+N_MPC)]
     U_opt = U_bar_opt + U_nom_val[:,idx:(idx+N_MPC-1)]
+    del_opt = x_opt[8::N_xu].elements()
     ## ---- Update initial conditions ----
     u0 = U_opt[:,0].elements()
     # x0 = X_opt[:,1].elements()
@@ -324,6 +337,7 @@ for idx in range(Nidx-1):
     ## ---- Store values for plotting ----
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
+    del_plot[:,idx] = del_opt[0]
     X_future[:,:,idx] = np.array(X_opt)
     # ---- warm start ---- 
     # x_opt[0::N_xu] = [0.0]*(N_MPC)
@@ -417,7 +431,7 @@ axs[3,1].legend(handles, labels)
 axs[3,1].set_ylabel('time [s]')
 axs[3,1].grid()
 #  -------------------------------------------------------------------
-axs[4,1].plot(t_idx_u, U_plot[4,:].T, color='g', label='slack')
+axs[4,1].plot(t_idx_u, del_plot.T, color='g', label='slack')
 axs[4,1].plot(t_idx_u, 0.01*success, color='r', label='succ')
 handles, labels = axs[4,1].get_legend_handles_labels()
 axs[4,1].legend(handles, labels)
