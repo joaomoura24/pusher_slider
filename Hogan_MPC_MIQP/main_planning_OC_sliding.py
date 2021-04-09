@@ -16,12 +16,14 @@ import my_opt
 #  -------------------------------------------------------------------
 N_x = 4 # number of state variables
 N_u = 4 # number of actions variables
-N_xu = N_x + N_u
+N_s = 1
+N_xu = N_x + N_u + N_s # number of optimization variables
+# N_xu = N_x + N_u # number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
 T = 4 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
-miu_p = 0.3 # coefficient of friction between pusher and slider
+miu_p = 0.2 # coefficient of friction between pusher and slider
 W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 f_lim = 0.3 # limit on the actuations
 psi_dot_lim = 3.0 # limit on the actuations
@@ -89,6 +91,8 @@ fric_cone_idx = fric_cone_c.map(N-1)
 ## ---- Input variables ---
 X = cs.SX.sym('X', N_x, N)
 U = cs.SX.sym('U', N_u, N-1)
+## ---- Slack variable for complementarity constraint ----
+del_cc = cs.SX.sym('del_cc', N-1)
 #  -------------------------------------------------------------------
 ## ---- Initialize optimization and argument variables ---
 opt = my_opt.OptVars()
@@ -96,6 +100,7 @@ args = my_opt.OptArgs()
 ## ---- Define cost function ----
 goal_error = X[:,-1] - x_end_val
 opt.f = cs.dot(goal_error,cs.mtimes(W_f,goal_error))
+# opt.f += 10.0*cs.dot(del_cc,del_cc)
 ## ---- initial state constraint ----
 opt.g = (X[:,0]-x_init_val).elements()
 args.lbg = [0.0]*N_x
@@ -132,6 +137,11 @@ for i in range(N-1):
     args.lbx += [0.0,  -f_lim, 0.0, 0.0]
     args.ubx += [f_lim, f_lim, psi_dot_lim, psi_dot_lim]
     args.x0  += [0.0,     0.0, 0.0, 0.0]
+    ## ---- Add slack variables ---
+    opt.x += del_cc[i].elements()
+    args.x0 += [0.0]
+    args.lbx += [-cs.inf]
+    args.ubx += [cs.inf]
 ## ---- Add last States to optimization variables ---
 opt.x += [X[:,-1]]
 args.lbx += [-cs.inf]*N_x
@@ -152,11 +162,12 @@ sol = solver(x0=cs.vertcat(*args.x0), lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(
 x_sol = sol['x']
 x_opt = cs.horzcat(x_sol[0::N_xu],x_sol[1::N_xu],x_sol[2::N_xu],x_sol[3::N_xu]).T
 u_opt = cs.horzcat(x_sol[4::N_xu],x_sol[5::N_xu],x_sol[6::N_xu],x_sol[7::N_xu]).T
+del_opt = x_sol[8::N_xu]
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(3, 2, sharex=True, figsize=(12,8))
+fig, axs = plt.subplots(4, 2, sharex=True, figsize=(12,8))
 ts = np.linspace(0, T, N)
 tds = np.linspace(0, T, N-1)
 fric_cone_val = fric_cone_idx(u_opt)
@@ -186,6 +197,7 @@ axs[0,1].plot(ts, x_nom[3,:].T*(180/np.pi), color='b', label='nom')
 axs[0,1].plot(ts, x_opt[3,:].T*(180/np.pi), color='g', linestyle='--', label='opt')
 handles, labels = axs[0,1].get_legend_handles_labels()
 axs[0,1].legend(handles, labels)
+axs[1,1].set_xlabel('time [s]')
 axs[0,1].set_ylabel('x3')
 axs[0,1].grid()
 #  -------------------------------------------------------------------
@@ -193,7 +205,6 @@ axs[1,1].plot(tds, u_opt[0,:].T, color='b', label='u0')
 axs[1,1].plot(tds, u_opt[1,:].T, color='r', label='u1')
 handles, labels = axs[1,1].get_legend_handles_labels()
 axs[1,1].legend(handles, labels)
-axs[1,1].set_xlabel('time [s]')
 axs[1,1].set_ylabel('u opt')
 axs[1,1].grid()
 #  -------------------------------------------------------------------
@@ -203,9 +214,15 @@ axs[2,1].plot(tds, (u_opt[2,:].T)*0.01, color='r', label='psi_dot')
 axs[2,1].plot(tds, (u_opt[3,:].T)*0.01, color='y', label='psi_dot')
 handles, labels = axs[2,1].get_legend_handles_labels()
 axs[2,1].legend(handles, labels)
-axs[2,1].set_xlabel('time [s]')
 axs[2,1].set_ylabel('fric cone')
 axs[2,1].grid()
+#  -------------------------------------------------------------------
+axs[3,1].plot(tds, del_opt, color='g', label='slack')
+handles, labels = axs[3,1].get_legend_handles_labels()
+axs[3,1].legend(handles, labels)
+axs[3,1].set_xlabel('time [s]')
+axs[3,1].set_ylabel('u')
+axs[3,1].grid()
 #  -------------------------------------------------------------------
 
 # Animation of Nominal Trajectory
