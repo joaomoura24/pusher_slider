@@ -7,3 +7,5 @@
 presentation/*
 tikz_schematics/*
 *.out
+*.c
+*.so
