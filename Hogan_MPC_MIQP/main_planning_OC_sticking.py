@@ -96,8 +96,11 @@ U = cs.SX.sym('U', N_u, N-1)
 opt = my_opt.OptVars()
 args = my_opt.OptArgs()
 ## ---- Define cost function ----
-goal_error = X[:,-1] - x_end_val
-opt.f = cs.dot(goal_error,cs.mtimes(W_f,goal_error))
+goal_error = x - x_end_val
+cost_f = cs.Function('cost_f', [x], [cs.dot(goal_error,cs.mtimes(W_f,goal_error))])
+cost_F = cost_f.map(N)
+opt.f = cost_f(X[:,-1])
+# opt.f = cs.sum2(cost_F(X))
 ## ---- initial state constraint ----
 opt.g = (X[:,0]-x_init_val).elements()
 args.lbg = [0.0]*N_x
