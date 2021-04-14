@@ -18,15 +18,16 @@ N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 N_xu = N_x + N_u
 a = 0.09 # side dimension of the square slider in meters
-T = 5 # time of the simulation is seconds
+T = 2 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 miu_p = 0.2 # coefficient of friction between pusher and slider
-W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
+W_goal = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
+W_dx = 0.00001*cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 f_lim = 0.3 # limit on the actuations
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 # x_end_val = [0.0, 0.5, 180*(np.pi/180.), 0]
-x_end_val = [0.2, 0.5, 90*(np.pi/180.), 0]
+x_end_val = [0.2, 0.5, 180*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0]
 show_anim = True
 #  -------------------------------------------------------------------
@@ -91,10 +92,15 @@ opt = my_opt.OptVars()
 args = my_opt.OptArgs()
 ## ---- Define cost function ----
 goal_error = x - x_end_val
-cost_f = cs.Function('cost_f', [x], [cs.dot(goal_error,cs.mtimes(W_f,goal_error))])
-cost_F = cost_f.map(N)
-opt.f = cost_f(X[:,-1])
-# opt.f = cs.sum2(cost_F(X))
+cost_goal = cs.Function('cost_goal', [x], [cs.dot(goal_error,cs.mtimes(W_goal,goal_error))])
+cost_goal_traj = cost_goal.map(N)
+dx = f_func(x,u)
+cost_dx = cs.Function('cost_dx', [x,u], [cs.dot(dx,cs.mtimes(W_dx,dx))])
+cost_dx_traj = cost_dx.map(N-1)
+opt.f = cost_goal(X[:,-1])
+# opt.f += cs.sum2(cost_dx_traj(X[:,0:-1], U))
+# sys.exit()
+# opt.f = cs.sum2(cost_goal_traj(X))
 ## ---- initial state constraint ----
 opt.g = (X[:,0]-x_init_val).elements()
 args.lbg = [0.0]*N_x
