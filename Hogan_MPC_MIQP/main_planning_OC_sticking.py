@@ -18,20 +18,21 @@ N_x = 4 # number of state variables
 N_u = 3 # number of actions variables
 N_xu = N_x + N_u
 a = 0.09 # side dimension of the square slider in meters
-T = 4 # time of the simulation is seconds
+T = 5 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
-miu_p = 0.3 # coefficient of friction between pusher and slider
+miu_p = 0.2 # coefficient of friction between pusher and slider
 W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 f_lim = 0.3 # limit on the actuations
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
-x_end_val = [0.0, 0.5, 180*(np.pi/180.), 0]
+# x_end_val = [0.0, 0.5, 180*(np.pi/180.), 0]
+x_end_val = [0.2, 0.5, 90*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0]
 show_anim = True
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
-N = T*freq # total number of iterations
+N = int(T*freq) # total number of iterations
 dt = 1.0/freq
 #  -------------------------------------------------------------------
 
@@ -67,13 +68,6 @@ R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface
 p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
 f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
-int_f_func = cs.Function('int_f_func', [x,u], [x+dt*f_func(x,u)])
-#  -------------------------------------------------------------------
-# compute time derivatives for all the input commands
-F_func = f_func.map(N-1)
-#  -------------------------------------------------------------------
-# compute roll out function
-F_rollout = int_f_func.mapaccum(N-1)
 #  -------------------------------------------------------------------
 
 ## Define constraint functions ----
