@@ -28,9 +28,10 @@ import my_opt
 #  -------------------------------------------------------------------
 N_x = 4
 N_u = 4
-N_xu = N_x + N_u # number of optimization variables
+N_s = 1
+N_xu = N_x + N_u + N_s# number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
-miu_p = 0.2 # coefficient of friction between pusher and slider
+miu_p = 0.25 # coefficient of friction between pusher and slider
 W_goal = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 W_dx = 0.000001*cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 T = 2 # time of the simulation is seconds
@@ -38,7 +39,6 @@ freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 # N_MPC = 63 # time horizon for the MPC controller
-# N_MPC = 15 # time horizon for the MPC controller
 N_MPC = 15 # time horizon for the MPC controller
 # x_end_val = [0.0, 0.5, 180*(np.pi/180.), 0]
 x_end_val = [0.2, 0.5, 180*(np.pi/180.), 0]
@@ -123,6 +123,8 @@ U = cs.SX.sym('U', N_u, N_MPC-1)
 ## ---- Initial state and action variables ----
 x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
+## ---- Slack variable for complementarity constraint ----
+del_cc = cs.SX.sym('del_cc', N_MPC-1)
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
@@ -133,13 +135,16 @@ args = my_opt.OptArgs()
 ## ---- Define optimization objective ----------
 goal_error = x - x_end_val
 cost_goal = cs.Function('cost_goal', [x], [cs.dot(goal_error,cs.mtimes(W_goal,goal_error))])
-cost_goal_traj = cost_goal.map(N_MPC)
-dx = f_func(x,u)
-cost_dx = cs.Function('cost_dx', [x,u], [cs.dot(dx,cs.mtimes(W_dx,dx))])
-cost_dx_traj = cost_dx.map(N_MPC-1)
+# cost_goal_traj = cost_goal.map(N_MPC)
+# dx = f_func(x,u)
+# cost_dx = cs.Function('cost_dx', [x,u], [cs.dot(dx,cs.mtimes(W_dx,dx))])
+# cost_dx_traj = cost_dx.map(N_MPC-1)
 opt.f = cost_goal(X[:,-1])
 # opt.f += cs.sum2(cost_dx_traj(X[:,0:-1], U))
 # opt.f = cs.sum2(cost_goal_traj(X))
+Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)
+Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
+opt.f += cs.sum1(Ks*(del_cc**2))
 ## ---- Set optimization variables ----
 X_nom = np.linspace(x_init_val, x_end_val, N).transpose()
 x_nom = X_nom[:,0:N_MPC]
@@ -160,6 +165,11 @@ for i in range(N_MPC-1):
     args.lbx += [0.0,  -f_lim,         0.0,         0.0]
     args.ubx += [f_lim, f_lim, psi_dot_lim, psi_dot_lim]
     args.x0 += [0.0,     0.0, 0.0, 0.0]
+    ## ---- Add slack variables ---
+    opt.x += del_cc[i].elements()
+    args.x0 += [0.0]
+    args.lbx += [-cs.inf]
+    args.ubx += [cs.inf]
 opt.x += X[:,-1].elements()
 args.x0 += x_nom[:,-1].tolist()
 args.lbx += [-cs.inf]*(N_x-1)
@@ -180,8 +190,8 @@ for i in range(N_MPC-1):
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
     ## Complementary constraint
-    # opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i] + del_cc[i]]
-    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
+    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i] + del_cc[i]]
+    # opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
     args.lbg += [0.0]
     args.ubg += [0.0]
 ## ---- Set optimization parameters ----
@@ -219,6 +229,7 @@ elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
 X_plot = np.empty([N_x, Nidx])
 U_plot = np.empty([N_u, Nidx-1])
 X_plot[:,0] = x_init_val
+del_plot = np.empty([1, Nidx-1])
 X_future = np.empty([N_x, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
 success = np.empty(Nidx-1)
@@ -250,6 +261,7 @@ for idx in range(Nidx-1):
     ## ---- Compute actual trajectory and controls ----
     x_opt = cs.horzcat(xu_opt[0::N_xu],xu_opt[1::N_xu],xu_opt[2::N_xu],xu_opt[3::N_xu]).T
     u_opt = cs.horzcat(xu_opt[4::N_xu],xu_opt[5::N_xu],xu_opt[6::N_xu],xu_opt[7::N_xu]).T
+    del_opt = xu_opt[8::N_xu].elements()
     ## ---- Update initial conditions ----
     u0 = u_opt[:,0].elements()
     # x0 = x_opt[:,1].elements()
@@ -258,15 +270,17 @@ for idx in range(Nidx-1):
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
     X_future[:,:,idx] = np.array(x_opt)
+    del_plot[:,idx] = del_opt[0]
     # ---- warm start ---- 
-    xu_opt[0::N_xu] = [0.0]*(N_MPC)
-    xu_opt[1::N_xu] = [0.0]*(N_MPC)
-    xu_opt[2::N_xu] = [0.0]*(N_MPC)
-    xu_opt[3::N_xu] = [0.0]*(N_MPC)
-    xu_opt[4::N_xu] = [0.0]*(N_MPC-1)
-    xu_opt[5::N_xu] = [0.0]*(N_MPC-1)
+    # xu_opt[0::N_xu] = [0.0]*(N_MPC)
+    # xu_opt[1::N_xu] = [0.0]*(N_MPC)
+    # xu_opt[2::N_xu] = [0.0]*(N_MPC)
+    # xu_opt[3::N_xu] = [0.0]*(N_MPC)
+    # xu_opt[4::N_xu] = [0.0]*(N_MPC-1)
+    # xu_opt[5::N_xu] = [0.0]*(N_MPC-1)
     xu_opt[6::N_xu] = [0.0]*(N_MPC-1)
     xu_opt[7::N_xu] = [0.0]*(N_MPC-1)
+    xu_opt[8::N_xu] = [0.0]*(N_MPC-1)
     args.x0 = xu_opt.elements()
     # args.x0 = [0.0]*(len(args.x0))
 #  -------------------------------------------------------------------
@@ -378,7 +392,7 @@ if show_anim:
             repeat=False,
     )
     ## to save animation, uncomment the line below:
-    # ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('MPC_NLP_planning.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
