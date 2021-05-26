@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 ## Author: Joao Moura
 ## Date: 21/08/2020
 #  -------------------------------------------------------------------
@@ -7,7 +9,7 @@
 #  and sliding contact pusher.
 #  -------------------------------------------------------------------
 
-## Import Libraries
+# Import Libraries
 #  -------------------------------------------------------------------
 import os
 import sys
@@ -22,6 +24,12 @@ import my_dynamics
 import my_trajectories
 import my_plots
 import my_opt
+#  -------------------------------------------------------------------
+
+
+# Add current directory to the LD_LIBRARY_PATH (for ubuntu)
+#  -------------------------------------------------------------------
+os.environ['LD_LIBRARY_PATH'] += os.getcwd()
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -39,7 +47,7 @@ r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 # N_MPC = 63 # time horizon for the MPC controller
 # N_MPC = 15 # time horizon for the MPC controller
-N_MPC = 15 # time horizon for the MPC controller
+N_MPC = 12 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
@@ -51,7 +59,7 @@ solver_name = 'snopt'
 # solver_name = 'qpoases'
 opts_dict = {'print_time': 0}
 no_printing = True
-code_gen = False
+code_gen = True
 show_anim = True
 #  -------------------------------------------------------------------
 ## get string name
@@ -98,8 +106,6 @@ R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface
 p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
 f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x, u_, beta)],['x','u'],['xdot'])
-print(f_func(x,u))
-sys.exit()
 #  -------------------------------------------------------------------
 
 ## Define constraint functions
@@ -226,7 +232,10 @@ if (solver_name == 'ipopt') or (solver_name == 'snopt'):
     if code_gen:
         if not os.path.isfile('./' + prog_name + '.so'):
             solver.generate_dependencies(prog_name + '.c')
-            os.system('gcc -fPIC -shared -O3 ' + prog_name + '.c -o ' + prog_name + '.so')
+            compile_instruc = 'gcc -fPIC -shared -O3 ' + prog_name + '.c -o ' + prog_name + '.so'
+            flag = os.system(compile_instruc)
+            if(flag==0): print("Compilation failed")
+        # solver = cs.nlpsol('solver', solver_name, prog_name + '.so', opts_dict)
         solver = cs.nlpsol('solver', solver_name, prog_name + '.so', opts_dict)
 elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
     solver = cs.qpsol('solver', solver_name, prob, opts_dict)
@@ -258,8 +267,8 @@ for idx in range(Nidx-1):
     sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
-    print('--------------------------------')
-    print(idx,'out of',Nidx-1)
+    # print('--------------------------------')
+    # print(idx,'out of',Nidx-1)
     stats = solver.stats()
     if stats['success'] == True:
         success[idx] = 1
