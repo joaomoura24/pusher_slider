@@ -42,12 +42,12 @@ a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.25 # coefficient of friction between pusher and slider
 W_f = cs.diag(cs.SX([1.0,1.0,0.01]))
 T = 12 # time of the simulation is seconds
-freq = 25 # number of increments per second
+freq = 50 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 # N_MPC = 63 # time horizon for the MPC controller
 # N_MPC = 15 # time horizon for the MPC controller
-N_MPC = 12 # time horizon for the MPC controller
+N_MPC = 15 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
@@ -59,7 +59,7 @@ solver_name = 'snopt'
 # solver_name = 'qpoases'
 opts_dict = {'print_time': 0}
 no_printing = True
-code_gen = True
+code_gen = False
 show_anim = True
 #  -------------------------------------------------------------------
 ## get string name
@@ -97,6 +97,8 @@ u_ = u_red_func(u)
 # b[0] - slider lenght [m]
 # b[1] - radious of the pusher [m]
 beta = [a, r_pusher]
+# sl_cc - complementarity constraints slack variables
+sl_cc = cs.SX.sym('sl_cc', 2)
 #  -------------------------------------------------------------------
 
 ## Build Motion Model
@@ -115,6 +117,13 @@ x_next = cs.SX.sym('x_next', N_x)
 ## ---- Define Dynamic constraints ----
 dyn_err_f = cs.Function('dyn_err_f', [x, u, x_next], 
         [x_next-x-dt*f_func(x,u)])
+# dyn_err_F = dyn_err_f.map(N_MPC-1, 'serial', 2)
+dyn_err_F = dyn_err_f.map(N_MPC-1, 'thread')
+## ---- Define Control constraints ----
+fric_cone_lim_c = cs.Function('fric_cone_lim_c', [u], [cs.vertcat(u[0]+u[1], u[0]-u[1])])
+fric_cone_lim_C = fric_cone_lim_c.map(N_MPC-1, 'thread')
+fric_cone_cc = cs.Function('fric_cone_lim_c', [u, sl_cc], [cs.vertcat(u[0]*u[2] + sl_cc[0], u[1]*u[3] + sl_cc[1])])
+fric_cone_CC = fric_cone_cc.map(N_MPC-1, 'thread')
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
@@ -139,7 +148,7 @@ x_init = cs.SX.sym('x0', N_x)
 u_init = cs.SX.sym('u0', N_u)
 x_nom = cs.SX.sym('x_nom', N_x)
 ## ---- Slack variable for complementarity constraint ----
-del_cc = cs.SX.sym('del_cc', N_MPC-1, 2)
+SL_cc = cs.SX.sym('SL_cc', 2, N_MPC-1)
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
@@ -151,12 +160,12 @@ args = my_opt.OptArgs()
 pos_err = x - x_nom
 # cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
 cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(x[0:(N_x-1)],cs.mtimes(W_f,x[0:(N_x-1)]))-2*cs.dot(x_nom[0:(N_x-1)],cs.mtimes(W_f,x[0:(N_x-1)]))])
-cost_F = cost_f.map(N_MPC)
+cost_F = cost_f.map(N_MPC, 'thread')
 opt.f = cs.sum2(cost_F(X, X_nom))
 Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)
 Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
-opt.f += cs.sum1(Ks*(del_cc[:,0]**2))
-opt.f += cs.sum1(Ks*(del_cc[:,1]**2))
+opt.f += cs.sum1(Ks*(SL_cc[0,:].T**2))
+opt.f += cs.sum1(Ks*(SL_cc[1,:].T**2))
 ## ---- Set optimization variables ----
 opt.x = []
 args.x0 = []
@@ -176,7 +185,7 @@ for i in range(N_MPC-1):
     args.ubx += [cs.inf, cs.inf, psi_dot_lim, psi_dot_lim]
     args.x0 += [0.0,     0.0, 0.0, 0.0]
     ## ---- Add slack variables ---
-    opt.x += del_cc[i,:].elements()
+    opt.x += SL_cc[:,i].elements()
     args.x0 += [0.0, 0.0]
     args.lbx += [-cs.inf, -cs.inf]
     args.ubx += [cs.inf, cs.inf]
@@ -187,26 +196,21 @@ args.ubx += [cs.inf]*(N_x-1)
 args.lbx += [-psi_lim]
 args.ubx += [psi_lim]
 ## ---- Set optimzation constraints ----
-opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
+opt.g = (X[:,0]-x_init).elements() # Initial Conditions
 args.lbg = [0.0]*N_x
 args.ubg = [0.0]*N_x
-for i in range(N_MPC-1):
-    ## ---- Dynamic constraints ---- 
-    opt.g += dyn_err_f(X[:,i], U[:,i], X[:,i+1]).elements()
-    args.lbg += [0]*N_x
-    args.ubg += [0]*N_x
-    ## ---- Forces limit condition ----
-    opt.g += [U[0,i]+U[1,i], U[0,i]-U[1,i]]
-    args.lbg += [0.0, -2*f_lim]
-    args.ubg += [2*miu_p*f_lim, 2*f_lim]
-    ## Complementary constraint
-    opt.g += [U[0,i]*U[2,i] + del_cc[i,0]]
-    opt.g += [U[1,i]*U[3,i] + del_cc[i,1]]
-    # opt.g += [U[0,i]*U[2,i]]
-    # opt.g += [U[1,i]*U[3,i]]
-    # opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
-    args.lbg += [0.0, 0.0]
-    args.ubg += [0.0, 0.0]
+## ---- Dynamic constraints ---- 
+opt.g += dyn_err_F(X[:,:-1], U, X[:,1:]).elements()
+args.lbg += [0.0]*(N_x*(N_MPC-1))
+args.ubg += [0.0]*(N_x*(N_MPC-1))
+## ---- Forces limit condition ----
+opt.g += fric_cone_lim_C(U).elements()
+args.lbg += [0.0, -2*f_lim]*(N_MPC-1)
+args.ubg += [2*miu_p*f_lim, 2*f_lim]*(N_MPC-1)
+# Complementary constraint
+opt.g += fric_cone_CC(U, SL_cc).elements()
+args.lbg += [0.0]*(2*(N_MPC-1))
+args.ubg += [0.0]*(2*(N_MPC-1))
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += x_init.elements()
@@ -220,6 +224,7 @@ if solver_name == 'ipopt':
 if solver_name == 'snopt':
     if no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
     opts_dict['snopt']['Hessian updates'] = 1
+    # opts_dict['snopt']['Iterations limit'] = 200
 if solver_name == 'qpoases':
     if no_printing: opts_dict['printLevel'] = 'none'
     opts_dict['sparse'] = True
@@ -240,6 +245,8 @@ if (solver_name == 'ipopt') or (solver_name == 'snopt'):
 elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
     solver = cs.qpsol('solver', solver_name, prob, opts_dict)
 #  -------------------------------------------------------------------
+# print(opts_dict)
+# sys.exit()
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
