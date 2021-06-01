@@ -12,4 +12,6 @@ from .utils import plots
 # import from constraints folder
 # ----------------------------------------------------------------
 
-from .constraints import dynamic_model as dyn
+from .models import dynamic_model as dyn
+
+from .utils import gen_nom_traj as traj

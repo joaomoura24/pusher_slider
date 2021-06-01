@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import sys
 #  -------------------------------------------------------------------
-import my_trajectories
 import sliding_pack
 #  -------------------------------------------------------------------
 
@@ -78,13 +77,13 @@ fric_cone_c = fric_cone_c.map(N-1)
 
 ## generate nominal trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N, 0)
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, 0)
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.5, N, 0)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, 0)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.25, N, 0)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, 0)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.5, N, 0)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, 0)
 #  ------------------------------------------------------------------
 # stack state and derivative of state
-x_nom, dx_nom = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+x_nom, dx_nom = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  -------------------------------------------------------------------
 
 ## initialize variables for optimization problem

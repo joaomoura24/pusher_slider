@@ -11,7 +11,6 @@
 ## Import libraries
 ## -------------------------------------------------------------------
 import numpy as np
-import sys
 import casadi as cs
 
 ## Generate Nominal Trajectory (line)

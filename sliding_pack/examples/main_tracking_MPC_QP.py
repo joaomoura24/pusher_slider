@@ -18,7 +18,6 @@ import casadi as cs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #  -------------------------------------------------------------------
-import my_trajectories
 import sliding_pack
 #  -------------------------------------------------------------------
 
@@ -108,13 +107,13 @@ fric_cone_C = fric_cone_c.map(NN-1)
 
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
-# x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
-# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.0, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
-X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+X_nom_val, dX_nom_val = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 # control path variables
 u_nom_full = cs.SX.sym('u_nom_full', N_u, NN-1)

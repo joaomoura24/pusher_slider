@@ -18,7 +18,6 @@ import casadi as cs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #  -------------------------------------------------------------------
-import my_trajectories
 import sliding_pack
 #  -------------------------------------------------------------------
 

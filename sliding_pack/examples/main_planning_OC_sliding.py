@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import sys
 #  -------------------------------------------------------------------
-import my_trajectories
 import sliding_pack
 #  -------------------------------------------------------------------
 
