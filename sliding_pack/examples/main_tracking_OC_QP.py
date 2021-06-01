@@ -17,7 +17,6 @@ import sys
 #  -------------------------------------------------------------------
 import my_dynamics
 import my_trajectories
-import my_plots
 import sliding_pack
 #  -------------------------------------------------------------------
 
@@ -210,7 +209,7 @@ solver = cs.nlpsol('solver', 'ipopt', prob)
 ## ---- Solve optimization problem ----
 sol = solver(x0=cs.vertcat(*args.x0), lbx=cs.vertcat(*args.lbx), ubx=cs.vertcat(*args.ubx), lbg=cs.vertcat(*args.lbg), ubg=cs.vertcat(*args.ubg), p=args.p)
 w_opt = sol['x']
-my_plots.plot_sparsity(cs.horzcat(*opt.g), cs.vertcat(*opt.x), w_opt)
+sliding_pack.plots.plot_sparsity(cs.horzcat(*opt.g), cs.vertcat(*opt.x), w_opt)
 ## ---- Compute actual trajectory and controls ----
 X_bar_opt = np.array(cs.horzcat(w_opt[0::7],w_opt[1::7],w_opt[2::7],w_opt[3::7]).T)
 U_bar_opt = np.array(cs.horzcat(w_opt[4::7],w_opt[5::7],w_opt[6::7]).T)
@@ -267,9 +266,9 @@ axs[3].grid()
 if show_anim:
 #  -------------------------------------------------------------------
     x_anim = np.array(X_opt)
-    fig, ax = my_plots.plot_nominal_traj(x0_nom, x1_nom)
+    fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
-    slider, pusher, path, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+    slider, pusher, path, _ = sliding_pack.plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
             R_pusher_func, 
@@ -277,7 +276,7 @@ if show_anim:
             a, r_pusher)
     # call the animation
     ani = animation.FuncAnimation( fig,
-            my_plots.animate_square_slider_and_circle_pusher,
+            sliding_pack.plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, x_anim, a, path),
             frames=N,
             interval=dt*1000,

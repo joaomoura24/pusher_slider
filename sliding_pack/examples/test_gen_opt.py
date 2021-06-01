@@ -8,7 +8,6 @@ import sys
 #  -------------------------------------------------------------------
 import my_dynamics
 import my_trajectories
-import my_plots
 import sliding_pack
 #  -------------------------------------------------------------------
 
@@ -236,9 +235,9 @@ axs[4,1].grid()
 if show_anim:
 #  -------------------------------------------------------------------
     x_anim = np.array(x_rollout)
-    fig, ax = my_plots.plot_nominal_traj(x_anim[0,:].T, x_anim[1,:].T)
+    fig, ax = sliding_pack.plots.plot_nominal_traj(x_anim[0,:].T, x_anim[1,:].T)
     # get slider and pusher patches
-    slider, pusher, _, _ = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+    slider, pusher, _, _ = sliding_pack.plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
             R_pusher_func, 
@@ -247,7 +246,7 @@ if show_anim:
     # call the animation
     ani = animation.FuncAnimation(
             fig,
-            my_plots.animate_square_slider_and_circle_pusher,
+            sliding_pack.plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, x_anim, a),
             frames=N,
             interval=dt*1000,

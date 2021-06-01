@@ -20,7 +20,6 @@ import matplotlib.animation as animation
 #  -------------------------------------------------------------------
 import my_dynamics
 import my_trajectories
-import my_plots
 import sliding_pack
 #  -------------------------------------------------------------------
 
@@ -299,7 +298,7 @@ for idx in range(Nidx-1):
     X_future[:,:,idx] = np.array(X_opt)
 #  -------------------------------------------------------------------
 # show sparsity pattern
-# my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), x_opt)
+# sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), x_opt)
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -372,11 +371,11 @@ axs[3,1].grid()
 #  -------------------------------------------------------------------
 if show_anim:
 #  -------------------------------------------------------------------
-    fig, ax = my_plots.plot_nominal_traj(x0_nom[0:N], x1_nom[0:N])
+    fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom[0:N], x1_nom[0:N])
     # get slider and pusher patches
     x0 = np.array(X_plot[:,0].T)
     d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]
-    slider, pusher, path_past, path_future = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+    slider, pusher, path_past, path_future = sliding_pack.plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
             p_pusher_func, 
             R_pusher_func, 
@@ -384,7 +383,7 @@ if show_anim:
             a, r_pusher)
     # call the animation
     ani = animation.FuncAnimation(fig,
-            my_plots.animate_square_slider_and_circle_pusher,
+            sliding_pack.plots.animate_square_slider_and_circle_pusher,
             fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
             frames=Nidx-1,
             interval=dt*1000,

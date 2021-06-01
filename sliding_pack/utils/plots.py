@@ -1,14 +1,15 @@
-#!/usr/bin/env python3.8
-## Author: Joao Moura
-## Contact: jpousad@ed.ac.uk
-## Date: 16/12/2020
-## -------------------------------------------------------------------
-## Description:
-## 
-## Functions for plotting trajectories
-## -------------------------------------------------------------------
+#!/usr/bin/env python3
 
-## Import Libraries
+# Author: Joao Moura
+# Contact: jpousad@ed.ac.uk
+# Date: 16/12/2020
+# -------------------------------------------------------------------
+# Description:
+# 
+# Functions for plotting trajectories
+# -------------------------------------------------------------------
+
+# Import Libraries
 #  -------------------------------------------------------------------
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,7 +17,7 @@ import matplotlib.transforms as transforms
 import matplotlib.patches as patches
 import casadi as cs
 
-## Return patches
+# Return patches
 #  -------------------------------------------------------------------
 def get_patches_for_square_slider_and_cicle_pusher(ax, pfunc, Rfunc, x_data, sq_sd, r_pusher):
     x0 = x_data[:,0]
@@ -31,7 +32,7 @@ def get_patches_for_square_slider_and_cicle_pusher(ax, pfunc, Rfunc, x_data, sq_
     return slider, pusher, path_past, path_future;
 #  -------------------------------------------------------------------
 
-## Return patches
+# Return patches
 #  -------------------------------------------------------------------
 def animate_square_slider_and_circle_pusher(i, slider, pusher, ax, pfunc, Rfunc, x_data, sq_sd, path_past=None, path_future=None, X_future=None):
     xi = x_data[:,i]
