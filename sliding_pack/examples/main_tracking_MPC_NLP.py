@@ -21,7 +21,7 @@ import matplotlib.animation as animation
 import my_dynamics
 import my_trajectories
 import my_plots
-import my_opt
+import sliding_pack
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -139,7 +139,7 @@ vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
 cost_F = cost_f.map(NN-1)
 #  -------------------------------------------------------------------
-opt = my_opt.OptVars()
+opt = sliding_pack.opt.OptVars()
 # define cost function
 opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom_full))
 # define optimization variables
@@ -152,7 +152,7 @@ prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #  -------------------------------------------------------------------
 # Instantiating optimizer arguments
-args = my_opt.OptArgs()
+args = sliding_pack.opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((NN-1)*N_u)
 # opt var boundaries
@@ -196,8 +196,8 @@ cost = cs.Function('cost', [Q, x, u], [cs.dot(x,cs.mtimes(Q,x)) + cs.dot(u,cs.mt
 cost_f = cs.Function('cost_f', [x, u], [cost(Qcost, x, u)])
 cost_F = cost_f.map(N_MPC-1)
 ## ---- Initialize optimization and argument variables ---
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+opt = sliding_pack.opt.OptVars()
+args = sliding_pack.opt.OptArgs()
 ## ---- cost function ----
 opt.f = cs.sum2(cost_F(X_bar[:,0:-1], U_bar))
 opt.f += cost(QcostN, X_bar[:,-1], cs.SX(N_u, 1)) 

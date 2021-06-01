@@ -21,7 +21,7 @@ import matplotlib.animation as animation
 import my_dynamics
 import my_trajectories
 import my_plots
-import my_opt
+import sliding_pack
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -32,9 +32,9 @@ N_s = 1
 N_xu = N_x + N_u + N_s# number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.25 # coefficient of friction between pusher and slider
-W_goal = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
-W_dx = 0.000001*cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
-T = 2 # time of the simulation is seconds
+W_goal = cs.diag(cs.SX([1.0,1.0,1.1,0.0]))
+W_u = cs.diag(cs.SX([1.0,1.0,1.0,1.0]))
+T = 3 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
@@ -130,21 +130,33 @@ del_cc = cs.SX.sym('del_cc', N_MPC-1)
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 ## ---- Initialize optimization and argument variables ---
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+opt = sliding_pack.opt.OptVars()
+args = sliding_pack.opt.OptArgs()
 ## ---- Define optimization objective ----------
 goal_error = x - x_end_val
 cost_goal = cs.Function('cost_goal', [x], [cs.dot(goal_error,cs.mtimes(W_goal,goal_error))])
-# cost_goal_traj = cost_goal.map(N_MPC)
-# dx = f_func(x,u)
-# cost_dx = cs.Function('cost_dx', [x,u], [cs.dot(dx,cs.mtimes(W_dx,dx))])
-# cost_dx_traj = cost_dx.map(N_MPC-1)
+cost_traj = cost_goal.map(N_MPC)
+k_u = cs.SX.sym('k_u', 1)
+cost_u = cs.Function('cost_action', [u, k_u], [cs.dot(u,cs.mtimes(k_u*W_u,u))])
+cost_U = cost_u.map(N_MPC-1)
 opt.f = cost_goal(X[:,-1])
+# opt.f = cost_goal(X[:,-1]) + cs.sum2(cost_U(U))
+# opt.f = cs.sum2(cost_traj(X))
 # opt.f += cs.sum2(cost_dx_traj(X[:,0:-1], U))
 # opt.f = cs.sum2(cost_goal_traj(X))
 Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)
 Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
 opt.f += cs.sum1(Ks*(del_cc**2))
+K_u_max = 1.1; K_u_min = 0.0000001; 
+# K_u = 0.00001*cs.SX.ones(N_MPC-1,1)
+K_u = K_u_min*cs.exp(xs*cs.log(K_u_max/K_u_min))
+# print(K_u)
+# sys.exit()
+opt.f += cs.sum2(cost_U(U, K_u))
+# print(K_u)
+# print(cs.sum1(cost_U(U, K_u)))
+# print(opt.f)
+# sys.exit()
 ## ---- Set optimization variables ----
 X_nom = np.linspace(x_init_val, x_end_val, N).transpose()
 x_nom = X_nom[:,0:N_MPC]
@@ -276,8 +288,8 @@ for idx in range(Nidx-1):
     # xu_opt[1::N_xu] = [0.0]*(N_MPC)
     # xu_opt[2::N_xu] = [0.0]*(N_MPC)
     # xu_opt[3::N_xu] = [0.0]*(N_MPC)
-    # xu_opt[4::N_xu] = [0.0]*(N_MPC-1)
-    # xu_opt[5::N_xu] = [0.0]*(N_MPC-1)
+    xu_opt[4::N_xu] = [0.0]*(N_MPC-1)
+    xu_opt[5::N_xu] = [0.0]*(N_MPC-1)
     xu_opt[6::N_xu] = [0.0]*(N_MPC-1)
     xu_opt[7::N_xu] = [0.0]*(N_MPC-1)
     xu_opt[8::N_xu] = [0.0]*(N_MPC-1)
@@ -286,6 +298,33 @@ for idx in range(Nidx-1):
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # my_plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
+#  -------------------------------------------------------------------
+
+# Animation
+#  -------------------------------------------------------------------
+if show_anim:
+#  -------------------------------------------------------------------
+    fig, ax = my_plots.plot_nominal_traj(X_nom[0,0:N], X_nom[1,0:N])
+    # get slider and pusher patches
+    x0 = np.array(X_plot[:,0].T)
+    d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]
+    slider, pusher, path_past, path_future = my_plots.get_patches_for_square_slider_and_cicle_pusher(
+            ax, 
+            p_pusher_func, 
+            R_pusher_func, 
+            X_plot,
+            a, r_pusher)
+    # call the animation
+    ani = animation.FuncAnimation(fig,
+            my_plots.animate_square_slider_and_circle_pusher,
+            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
+            frames=Nidx-1,
+            interval=dt*1000,
+            blit=True,
+            repeat=False,
+    )
+    ## to save animation, uncomment the line below:
+    # ani.save('MPC_NLP_planning.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
@@ -365,35 +404,7 @@ handles, labels = axs[4,1].get_legend_handles_labels()
 axs[4,1].legend(handles, labels)
 axs[4,1].set_xlabel('time [s]')
 axs[4,1].set_ylabel('u')
-axs[4,1].grid()
-#  -------------------------------------------------------------------
-
-# Animation
-#  -------------------------------------------------------------------
-if show_anim:
-#  -------------------------------------------------------------------
-    fig, ax = my_plots.plot_nominal_traj(X_nom[0,0:N], X_nom[1,0:N])
-    # get slider and pusher patches
-    x0 = np.array(X_plot[:,0].T)
-    d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]
-    slider, pusher, path_past, path_future = my_plots.get_patches_for_square_slider_and_cicle_pusher(
-            ax, 
-            p_pusher_func, 
-            R_pusher_func, 
-            X_plot,
-            a, r_pusher)
-    # call the animation
-    ani = animation.FuncAnimation(fig,
-            my_plots.animate_square_slider_and_circle_pusher,
-            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
-            frames=Nidx-1,
-            interval=dt*1000,
-            blit=True,
-            repeat=False,
-    )
-    ## to save animation, uncomment the line below:
-    # ani.save('MPC_NLP_planning.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
-#  -------------------------------------------------------------------
+axs[4,1].grid() # #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
 plt.show()

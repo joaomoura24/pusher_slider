@@ -18,7 +18,7 @@ import sys
 import my_dynamics
 import my_trajectories
 import my_plots
-import my_opt
+import sliding_pack
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -108,7 +108,7 @@ vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
 cost_F = cost_f.map(N-1)
 #  -------------------------------------------------------------------
-opt = my_opt.OptVars()
+opt = sliding_pack.opt.OptVars()
 # define cost function
 opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom))
 # define optimization variables
@@ -121,7 +121,7 @@ prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #  -------------------------------------------------------------------
 # Instanciating optimizer arguments
-args = my_opt.OptArgs()
+args = sliding_pack.opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((N-1)*N_u)
 # opt var boundaries
@@ -151,8 +151,8 @@ Rcost = cs.diag(cs.SX([1,1,0.0]))
 cost_f = cs.Function('cost', [x, u], [cs.dot(x,cs.mtimes(Qcost,x)) + cs.dot(u,cs.mtimes(Rcost,u))])
 cost_F = cost_f.map(N-1)
 ## ---- Initialize optimization and argument variables ---
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+opt = sliding_pack.opt.OptVars()
+args = sliding_pack.opt.OptArgs()
 ## ---- passing parameters ----
 opt.p = []
 opt.p += x.elements()

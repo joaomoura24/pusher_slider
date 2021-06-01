@@ -9,7 +9,7 @@ import sys
 import my_dynamics
 import my_trajectories
 import my_plots
-import my_opt
+import sliding_pack
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -97,8 +97,8 @@ U = cs.SX.sym('U', N_u, N-1)
 del_cc = cs.SX.sym('del_cc', N-1)
 #  -------------------------------------------------------------------
 ## ---- Initialize optimization and argument variables ---
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+opt = sliding_pack.opt.OptVars()
+args = sliding_pack.opt.OptArgs()
 ## ---- Define cost function ----
 goal_error = x - x_end_val
 cost_goal = cs.Function('cost_goal', [x], [cs.dot(goal_error,cs.mtimes(W_goal,goal_error))])

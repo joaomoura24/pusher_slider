@@ -23,7 +23,7 @@ import matplotlib.animation as animation
 import my_dynamics
 import my_trajectories
 import my_plots
-import my_opt
+import sliding_pack
 #  -------------------------------------------------------------------
 
 
@@ -154,8 +154,8 @@ SL_cc = cs.SX.sym('SL_cc', 2, N_MPC-1)
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 ## ---- Initialize optimization and argument variables ---
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+opt = sliding_pack.opt.OptVars()
+args = sliding_pack.opt.OptArgs()
 ## ---- Define optimization objective ----------
 pos_err = x - x_nom
 # cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])

@@ -28,7 +28,7 @@ import matplotlib.transforms as transforms
 import my_dynamics
 import my_trajectories
 import my_plots
-import my_opt
+import sliding_pack
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -46,7 +46,7 @@ r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # Mm = np.array([1, 2, 4, 8, 16, 32]) # mode scheduling
 # Mm = np.array([1, 2, 4, 8]) # mode scheduling
 # Mm = np.array([1, 5, 5, 4]) # mode scheduling
-Mm = np.array([1, 5, 4]) # mode scheduling
+Mm = np.array([1, 4, 4, 3]) # mode scheduling
 bigM = 500 # big M for the Mixed Integer optimization
 epsilon = 0.0
 f_lim = 0.3 # limit on the actuations
@@ -140,8 +140,8 @@ fric_cone_idx = fric_cone_c.map(Nidx-1)
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
-x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, dX_nom_val = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -155,7 +155,7 @@ vel_error = dx - f_func(x, u)
 cost_f = cs.Function('cost', [x, dx, u], [cs.dot(vel_error,cs.mtimes(W_f,vel_error))])
 cost_F = cost_f.map(NN-1)
 #  -------------------------------------------------------------------
-opt = my_opt.OptVars()
+opt = sliding_pack.opt.OptVars()
 # define cost function
 opt.f = cs.sum2(cost_F(X_nom_val[:,0:-1], dX_nom_val, u_nom))
 # define optimization variables
@@ -168,7 +168,7 @@ prob = {'f': opt.f, 'x': opt.x, 'g':opt.g}
 solver = cs.nlpsol('solver', 'ipopt', prob)
 #  -------------------------------------------------------------------
 # Instanciating optimizer arguments
-args = my_opt.OptArgs()
+args = sliding_pack.opt.OptArgs()
 # initial condition for opt var
 args.x0 = [0.0]*((NN-1)*N_u)
 # opt var boundaries
@@ -209,8 +209,8 @@ Zm0 = cs.DM(cs.repmat(Z_val, 1, N_m))
 
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+opt = sliding_pack.opt.OptVars()
+args = sliding_pack.opt.OptArgs()
 ## ---- Set optimization objective ----------
 Qcost = cs.diag(cs.SX([1.0,1.0,0.01,0.0])); QcostN = Qcost
 # Rcost = 0.1*cs.diag(cs.SX([1.0,1.0,0.0]))

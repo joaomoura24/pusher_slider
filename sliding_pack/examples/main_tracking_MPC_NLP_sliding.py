@@ -21,7 +21,7 @@ import matplotlib.animation as animation
 import my_dynamics
 import my_trajectories
 import my_plots
-import my_opt
+import sliding_pack
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -38,8 +38,8 @@ freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 # N_MPC = 63 # time horizon for the MPC controller
-# N_MPC = 15 # time horizon for the MPC controller
-N_MPC = 10 # time horizon for the MPC controller
+N_MPC = 12 # time horizon for the MPC controller
+# N_MPC = 10 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
@@ -117,8 +117,8 @@ fric_cone_idx = fric_cone_c.map(Nidx-1)
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = my_trajectories.generate_traj_line(0.5, 0.3, N, N_MPC)
-x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-# x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
+# x0_nom, x1_nom = my_trajectories.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+x0_nom, x1_nom = my_trajectories.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = my_trajectories.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -141,8 +141,8 @@ del_cc = cs.SX.sym('del_cc', N_MPC-1)
 ## Set up QP Optimization Problem
 #  -------------------------------------------------------------------
 ## ---- Initialize optimization and argument variables ---
-opt = my_opt.OptVars()
-args = my_opt.OptArgs()
+opt = sliding_pack.opt.OptVars()
+args = sliding_pack.opt.OptArgs()
 ## ---- Define optimization objective ----------
 pos_err = x - x_nom
 cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
