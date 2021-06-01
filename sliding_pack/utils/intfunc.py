@@ -17,9 +17,9 @@ import casadi as cs
 # -------------------------------------------------------------------
 # python integration lambda functions (1D and 2D)
 # -------------------------------------------------------------------
-int_square_np = lambda sq_side: integrate.dblquad(lambda x, y: np.sqrt((x**2)
+square_np = lambda sq_side: integrate.dblquad(lambda x, y: np.sqrt((x**2)
     + (y**2)), - sq_side/2, sq_side/2, -sq_side/2, sq_side/2)[0]
-int_quad_np = lambda sq_side: integrate.quad(lambda var: var**2,
+quad_np = lambda sq_side: integrate.quad(lambda var: var**2,
     - sq_side/2, sq_side/2)[0]
 # -------------------------------------------------------------------
 # casadi auxiliary variables
@@ -46,7 +46,7 @@ for n in range(N):
         k4, k4_q = g(xx + k3)
         Q += (k1_q + 2*k2_q + 2*k3_q + k4_q)/6
         xx += (k1 + 2*k2 + 2*k3 + k4)/6
-int_quad_cs = cs.Function('int_quad_cs', [side_lenght], [Q])
+quad_cs = cs.Function('quad_cs', [side_lenght], [Q])
 # -------------------------------------------------------------------
 # 2D casadi integration of g
 g = cs.Function('h_ext', [x, y], [DX, DY, (cs.sqrt((x**2)+(y**2)))*DX*DY])
@@ -64,4 +64,4 @@ for ny in range(N):
                 Q += (k1_q + 2*k2_q + 2*k3_q + k4_q)/6
                 xx += (k1_x + 2*k2_x + 2*k3_x + k4_x)/6
         yy += (k1_y + 2*k2_y + 2*k3_y + k4_y)/6
-int_square_cs = cs.Function('int_square_cs', [side_lenght], [Q])
+square_cs = cs.Function('square_cs', [side_lenght], [Q])

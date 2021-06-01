@@ -13,7 +13,7 @@
 ## -------------------------------------------------------------------
 import sys
 import casadi as cs
-import my_integration
+import sliding_pack
 
 ## -------------------------------------------------------------------
 ## build dynamic fuction for quasi-static ellipsoidal limit surface
@@ -38,7 +38,7 @@ beta = cs.veccat(sl, r_pusher)
 ## -------------------------------------------------------------------
 ## Rotation matrix
 Area = sl**2
-int_Area = my_integration.int_square_cs(sl)
+int_Area = sliding_pack.integral.square_cs(sl)
 c = int_Area/Area # ellipsoid approximation ratio
 A = cs.SX.sym('A', cs.Sparsity.diag(3))
 A[0,0] = A[1,1] = 1; A[2,2] = 1/(c**2);

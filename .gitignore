@@ -9,3 +9,4 @@ tikz_schematics/*
 *.out
 *.c
 *.so
+__pycache__
