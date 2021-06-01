@@ -25,7 +25,6 @@ import matplotlib.patches as patches
 import matplotlib.animation as animation
 import matplotlib.transforms as transforms
 #  -------------------------------------------------------------------
-import my_dynamics
 import my_trajectories
 import sliding_pack
 #  -------------------------------------------------------------------
@@ -107,11 +106,11 @@ z = cs.SX.sym('x', N_i)
 
 ## Build Motion Model
 #  -------------------------------------------------------------------
-R_pusher_func = my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_R
+R_pusher_func = sliding_pack.dyn.square_slider_quasi_static_ellipsoidal_limit_surface_R
 #  -------------------------------------------------------------------
-p_pusher_func = cs.Function('p_pusher_func', [x], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
+p_pusher_func = cs.Function('p_pusher_func', [x], [sliding_pack.dyn.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
 #  -------------------------------------------------------------------
-f_func = cs.Function('f_func', [x,u], [my_dynamics.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
+f_func = cs.Function('f_func', [x,u], [sliding_pack.dyn.square_slider_quasi_static_ellipsoidal_limit_surface_f(x,u, beta)],['x','u'],['xdot'])
 #  -------------------------------------------------------------------
 
 ## Compute Jacobians
