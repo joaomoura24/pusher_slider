@@ -86,28 +86,28 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # u - control vector
         # u[0] - normal force in the local frame
         # u[1] - tangential force in the local frame
-        # u[2] - relative sliding velocity between pusher and slider counterclockwise
-        # u[3] - relative sliding velocity between pusher and slider clockwise
+        # u[2] - rel sliding vel between pusher and slider counterclockwise
+        # u[3] - rel sliding vel between pusher and slider clockwise
         self.u = cs.SX.sym('u', self.Nu)
         #  -------------------------------------------------------------------
 
         # auxiliar symbolic variables
         # -------------------------------------------------------------------
         # x - state vector
-        __x_slider = cs.SX.sym('__x_slider') # in global frame [m]
-        __y_slider = cs.SX.sym('__y_slider') # in global frame [m]
-        __theta = cs.SX.sym('__theta') # in global frame [rad]
-        __psi = cs.SX.sym('__psi') # in relative frame [rad]
+        __x_slider = cs.SX.sym('__x_slider')  # in global frame [m]
+        __y_slider = cs.SX.sym('__y_slider')  # in global frame [m]
+        __theta = cs.SX.sym('__theta')  # in global frame [rad]
+        __psi = cs.SX.sym('__psi')  # in relative frame [rad]
         __x = cs.veccat(__x_slider, __y_slider, __theta, __psi)
-        ## u - control vector
-        __f_norm = cs.SX.sym('__f_norm') # in local frame [N]
-        __f_norm = cs.SX.sym('__f_norm') # in  local frame [N]
-        __psi_dot_ccw = cs.SX.sym('__psi_dot_ccw') # rel vel between pusher and slider [rad/s]
-        __psi_dot_cw = cs.SX.sym('__psi_dot_cw') # rel vel between pusher and slider [rad/s]
+        # u - control vector
+        __f_norm = cs.SX.sym('__f_norm')  # in local frame [N]
+        __f_norm = cs.SX.sym('__f_norm')  # in  local frame [N]
+        __psi_dot_ccw = cs.SX.sym('__psi_dot_ccw')  # rel vel between pusher and slider [rad/s]
+        __psi_dot_cw = cs.SX.sym('__psi_dot_cw')  # rel vel between pusher and slider [rad/s]
         __u = cs.veccat(v_norm, __f_norm, __psi_dot_ccw, __psi_dot_cw)
         # beta - dynamic parameters
-        __sl = cs.SX.sym('__sl') # slider side lenght
-        __r_pusher = cs.SX.sym('__r_pusher') # radious of the cilindrical pusher
+        __sl = cs.SX.sym('__sl')  slider side lenght
+        __r_pusher = cs.SX.sym('__r_pusher')  radious of the cilindrical pusher
         __beta = cs.veccat(__sl, __r_pusher)
 
         # system model
@@ -115,9 +115,10 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # Rotation matrix
         __Area = __sl**2
         __int_Area = sliding_pack.integral.square_cs(__sl)
-        __c = __int_Area/__Area # ellipsoid approximation ratio
+        __c = __int_Area/__Area  ellipsoid approximation ratio
         __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
-        __A[0,0] = __A[1,1] = 1; __A[2,2] = 1/(__c**2);
+        __A[0,0] = __A[1,1] = 1
+        __A[2,2] = 1/(__c**2)
         __ctheta = cs.cos(__theta); __stheta = cs.sin(__theta)
         __R = cs.SX(3,3)
         __R[0,0] = __ctheta; __R[0,1] = -__stheta; __R[1,0] = __stheta; __R[1,1] = __ctheta; __R[2,2] = 1.0;
