@@ -1,16 +1,16 @@
-## Author: Joao Moura
-## Contact: jpousad@ed.ac.uk
-## Date: 19/10/2020
-## -------------------------------------------------------------------
-## Description:
-## 
-## Functions modelling the dynamics of an object sliding on a table.
-## Based on: Hogan F.R, Rodriguez A. (2020) IJRR paper
-## -------------------------------------------------------------------
+# Author: Joao Moura
+# Contact: jpousad@ed.ac.uk
+# Date: 19/10/2020
+# -------------------------------------------------------------------
+# Description:
+# 
+# Functions modelling the dynamics of an object sliding on a table.
+# Based on: Hogan F.R, Rodriguez A. (2020) IJRR paper
+# -------------------------------------------------------------------
 
-## -------------------------------------------------------------------
-## Import libraries
-## -------------------------------------------------------------------
+# -------------------------------------------------------------------
+# Import libraries
+# -------------------------------------------------------------------
 import casadi as cs
 import sliding_pack
 
@@ -61,7 +61,7 @@ square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_sli
 
 class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
-    def __init__(self, slider_dim=0.09, pusher_radious=0.01):
+    def __init__(self, slider_dim=0.09, pusher_radious=0.01, miu=0.3):
 
         # system constant variables
         self.Nx = 4  # number of state variables
@@ -102,12 +102,14 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # u - control vector
         __f_norm = cs.SX.sym('__f_norm')  # in local frame [N]
         __f_norm = cs.SX.sym('__f_norm')  # in  local frame [N]
-        __psi_dot_ccw = cs.SX.sym('__psi_dot_ccw')  # rel vel between pusher and slider [rad/s]
-        __psi_dot_cw = cs.SX.sym('__psi_dot_cw')  # rel vel between pusher and slider [rad/s]
+        # rel vel between pusher and slider [rad/s]
+        __psi_dot_ccw = cs.SX.sym('__psi_dot_ccw')
+        # rel vel between pusher and slider [rad/s]
+        __psi_dot_cw = cs.SX.sym('__psi_dot_cw')
         __u = cs.veccat(v_norm, __f_norm, __psi_dot_ccw, __psi_dot_cw)
         # beta - dynamic parameters
-        __sl = cs.SX.sym('__sl')  slider side lenght
-        __r_pusher = cs.SX.sym('__r_pusher')  radious of the cilindrical pusher
+        __sl = cs.SX.sym('__sl')  # slider side lenght
+        __r_pusher = cs.SX.sym('__r_pusher')  # radious of the cilindrical pusher
         __beta = cs.veccat(__sl, __r_pusher)
 
         # system model
@@ -115,12 +117,12 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # Rotation matrix
         __Area = __sl**2
         __int_Area = sliding_pack.integral.square_cs(__sl)
-        __c = __int_Area/__Area  ellipsoid approximation ratio
+        __c = __int_Area/__Area # ellipsoid approximation ratio
         __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
-        __A[0,0] = __A[1,1] = 1
-        __A[2,2] = 1/(__c**2)
-        __ctheta = cs.cos(__theta); __stheta = cs.sin(__theta)
-        __R = cs.SX(3,3)
+        __A[0,0] = __A[1,1] = 1; __A[2,2] = 1/(__c**2);
+        __ctheta = cs.cos(__theta)
+        __stheta = cs.sin(__theta)
+        __R = cs.SX(3, 3)
         __R[0,0] = __ctheta; __R[0,1] = -__stheta; __R[1,0] = __stheta; __R[1,1] = __ctheta; __R[2,2] = 1.0;
         #  -------------------------------------------------------------------
         self.R = cs.Function('R', [__x], [__R], ['x'], ['R'])
@@ -141,3 +143,9 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         self.f_ = cs.Function('f_', [__x,__u,__beta], [__f], ['x', 'u', 'b'], ['f'])
         self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
         #  -------------------------------------------------------------------
+
+        # define constraint func
+        #  -------------------------------------------------------------------
+        self.fric_cone_c = cs.Function('fric_cone_c', [self.u], [cs.vertcat(miu*self.u[0]+self.u[1], miu*self.u[0]-self.u[1])])
+        #  -------------------------------------------------------------------
+

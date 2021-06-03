@@ -21,10 +21,10 @@ import matplotlib.animation as animation
 import sliding_pack
 #  -------------------------------------------------------------------
 
-# Define system dynamics
+# define system dynamics
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
-        slider_dim=0.09, pusher_radious=0.01)
+        slider_dim=0.09, pusher_radious=0.01, miu=0.2)
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -68,16 +68,20 @@ Nidx = int(N)
 # Nidx = 3
 #  -------------------------------------------------------------------
 
+# define optimization problem
+#  -------------------------------------------------------------------
+optObj = sliding_pack.nlp.MPC_nlpClass(
+        dyn, dt=dt)
+#  -------------------------------------------------------------------
+
 ## Define constraint functions
 #  -------------------------------------------------------------------
 ## ---- Input variables ---
 x_next = cs.SX.sym('x_next', dyn.Nx)
 ## ---- Define Dynamic constraints ----
-dyn_err_f = cs.Function('dyn_err_f', [dyn.x, dyn.u, x_next], 
+f_error = cs.Function('f_error', [dyn.x, dyn.u, x_next], 
         [x_next-dyn.x-dt*dyn.f(dyn.x,dyn.u)])
-## ---- Define Control constraints ----
-fric_cone_c = cs.Function('fric_cone_c', [dyn.u], [cs.vertcat(miu_p*dyn.u[0]+dyn.u[1], miu_p*dyn.u[0]-dyn.u[1])])
-fric_cone_idx = fric_cone_c.map(Nidx-1)
+fric_cone_idx = dyn.fric_cone_c.map(Nidx-1)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
@@ -153,11 +157,11 @@ args.lbg = [0.0]*dyn.Nx
 args.ubg = [0.0]*dyn.Nx
 for i in range(N_MPC-1):
     ## ---- Dynamic constraints ---- 
-    opt.g += dyn_err_f(X[:,i], U[:,i], X[:,i+1]).elements()
+    opt.g += f_error(X[:,i], U[:,i], X[:,i+1]).elements()
     args.lbg += [0]*dyn.Nx
     args.ubg += [0]*dyn.Nx
     ## ---- Friction cone constraints ----
-    opt.g += fric_cone_c(U[:,i]).elements()
+    opt.g += dyn.fric_cone_c(U[:,i]).elements()
     args.lbg += [0.0]*2
     args.ubg += [cs.inf]*2
     ## Complementary constraint

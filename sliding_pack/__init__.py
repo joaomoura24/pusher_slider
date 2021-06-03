@@ -8,10 +8,16 @@ from .utils import intfunc as integral
 
 from .utils import plots
 
+from .utils import gen_nom_traj as traj
+
 # ----------------------------------------------------------------
-# import from constraints folder
+# import from models folder
 # ----------------------------------------------------------------
 
 from .models import dynamic_model as dyn
 
-from .utils import gen_nom_traj as traj
+# ----------------------------------------------------------------
+# import from optClasses folder
+# ----------------------------------------------------------------
+
+from .optClasses import pusher_slider_nlp as nlp
