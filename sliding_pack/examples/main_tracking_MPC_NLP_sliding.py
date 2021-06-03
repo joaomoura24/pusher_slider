@@ -21,21 +21,25 @@ import matplotlib.animation as animation
 import sliding_pack
 #  -------------------------------------------------------------------
 
+# Define system dynamics
+#  -------------------------------------------------------------------
+dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
+        slider_dim=0.09, pusher_radious=0.01)
+#  -------------------------------------------------------------------
+
 ## Set Problem constants
 #  -------------------------------------------------------------------
-N_x = 4
-N_u = 4
 N_s = 1
-N_xu = N_x + N_u + N_s # number of optimization variables
+N_xu = dyn.Nx + dyn.Nu + N_s # number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.2 # coefficient of friction between pusher and slider
 W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
 T = 12 # time of the simulation is seconds
-freq = 25 # number of increments per second
+freq = 50 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 # N_MPC = 63 # time horizon for the MPC controller
-N_MPC = 12 # time horizon for the MPC controller
+N_MPC = 15 # time horizon for the MPC controller
 # N_MPC = 10 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0]
@@ -64,49 +68,15 @@ Nidx = int(N)
 # Nidx = 3
 #  -------------------------------------------------------------------
 
-## Define state and control vectors
-#  -------------------------------------------------------------------
-# x - state vector
-# x[0] - x slider CoM position in the global frame
-# x[1] - y slider CoM position in the global frame
-# x[2] - slider orientation in the global frame
-# x[3] - angle of pusher relative to slider
-x = cs.SX.sym('x', N_x)
-# dx - state vector derivative
-dx = cs.SX.sym('dx', N_x)
-# u - control vector
-# u[0] - normal force in the local frame
-# u[1] - tangential force in the local frame
-# u[2] - relative sliding velocity between pusher and slider up
-# u[3] - relative sliding velocity between pusher and slider down
-# u[4] - complementary constraint slack variable
-u = cs.SX.sym('u', N_u)
-u_red_func = cs.Function('u_red_func', [u], [cs.vertcat(u[0], u[1], u[2]-u[3])])
-u_ = u_red_func(u)
-# b - dynamic parameters
-# b[0] - slider lenght [m]
-# b[1] - radious of the pusher [m]
-beta = [a, r_pusher]
-#  -------------------------------------------------------------------
-
-## Build Motion Model
-#  -------------------------------------------------------------------
-R_pusher_func = sliding_pack.dyn.square_slider_quasi_static_ellipsoidal_limit_surface_R
-#  -------------------------------------------------------------------
-p_pusher_func = cs.Function('p_pusher_func', [x], [sliding_pack.dyn.square_slider_quasi_static_ellipsoidal_limit_surface_p(x, beta)], ['x'], ['p'])
-#  -------------------------------------------------------------------
-f_func = cs.Function('f_func', [x,u], [sliding_pack.dyn.square_slider_quasi_static_ellipsoidal_limit_surface_f(x, u_, beta)],['x','u'],['xdot'])
-#  -------------------------------------------------------------------
-
 ## Define constraint functions
 #  -------------------------------------------------------------------
 ## ---- Input variables ---
-x_next = cs.SX.sym('x_next', N_x)
+x_next = cs.SX.sym('x_next', dyn.Nx)
 ## ---- Define Dynamic constraints ----
-dyn_err_f = cs.Function('dyn_err_f', [x, u, x_next], 
-        [x_next-x-dt*f_func(x,u)])
+dyn_err_f = cs.Function('dyn_err_f', [dyn.x, dyn.u, x_next], 
+        [x_next-dyn.x-dt*dyn.f(dyn.x,dyn.u)])
 ## ---- Define Control constraints ----
-fric_cone_c = cs.Function('fric_cone_c', [u], [cs.vertcat(miu_p*u[0]+u[1], miu_p*u[0]-u[1])])
+fric_cone_c = cs.Function('fric_cone_c', [dyn.u], [cs.vertcat(miu_p*dyn.u[0]+dyn.u[1], miu_p*dyn.u[0]-dyn.u[1])])
 fric_cone_idx = fric_cone_c.map(Nidx-1)
 #  -------------------------------------------------------------------
 
@@ -124,13 +94,13 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, d
 ## Define variables for optimization
 #  -------------------------------------------------------------------
 ## ---- Input variables ---
-X = cs.SX.sym('X', N_x, N_MPC)
-U = cs.SX.sym('U', N_u, N_MPC-1)
-X_nom = cs.SX.sym('X_nom', N_x, N_MPC)
+X = cs.SX.sym('X', dyn.Nx, N_MPC)
+U = cs.SX.sym('U', dyn.Nu, N_MPC-1)
+X_nom = cs.SX.sym('X_nom', dyn.Nx, N_MPC)
 ## ---- Initial state and action variables ----
-x_init = cs.SX.sym('x0', N_x)
-u_init = cs.SX.sym('u0', N_u)
-x_nom = cs.SX.sym('x_nom', N_x)
+x_init = cs.SX.sym('x0', dyn.Nx)
+u_init = cs.SX.sym('u0', dyn.Nu)
+x_nom = cs.SX.sym('x_nom', dyn.Nx)
 ## ---- Slack variable for complementarity constraint ----
 del_cc = cs.SX.sym('del_cc', N_MPC-1)
 #  -------------------------------------------------------------------
@@ -141,8 +111,8 @@ del_cc = cs.SX.sym('del_cc', N_MPC-1)
 opt = sliding_pack.opt.OptVars()
 args = sliding_pack.opt.OptArgs()
 ## ---- Define optimization objective ----------
-pos_err = x - x_nom
-cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
+pos_err = dyn.x - x_nom
+cost_f = cs.Function('cost_f', [dyn.x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
 cost_F = cost_f.map(N_MPC)
 opt.f = cs.sum2(cost_F(X, X_nom))
 Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)
@@ -157,8 +127,8 @@ for i in range(N_MPC-1):
     ## ---- Add States to optimization variables ---
     opt.x += X[:,i].elements()
     args.x0 += X_nom_val[:,i].elements()
-    args.lbx += [-cs.inf]*(N_x-1)
-    args.ubx += [cs.inf]*(N_x-1)
+    args.lbx += [-cs.inf]*(dyn.Nx-1)
+    args.ubx += [cs.inf]*(dyn.Nx-1)
     args.lbx += [-psi_lim]
     args.ubx += [psi_lim]
     ## ---- Add Actions to optimization variables ---
@@ -173,19 +143,19 @@ for i in range(N_MPC-1):
     args.ubx += [cs.inf]
 opt.x += X[:,-1].elements()
 args.x0 += X_nom_val[:,-1].elements()
-args.lbx += [-cs.inf]*(N_x-1)
-args.ubx += [cs.inf]*(N_x-1)
+args.lbx += [-cs.inf]*(dyn.Nx-1)
+args.ubx += [cs.inf]*(dyn.Nx-1)
 args.lbx += [-psi_lim]
 args.ubx += [psi_lim]
 ## ---- Set optimzation constraints ----
 opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
-args.lbg = [0.0]*N_x
-args.ubg = [0.0]*N_x
+args.lbg = [0.0]*dyn.Nx
+args.ubg = [0.0]*dyn.Nx
 for i in range(N_MPC-1):
     ## ---- Dynamic constraints ---- 
     opt.g += dyn_err_f(X[:,i], U[:,i], X[:,i+1]).elements()
-    args.lbg += [0]*N_x
-    args.ubg += [0]*N_x
+    args.lbg += [0]*dyn.Nx
+    args.ubg += [0]*dyn.Nx
     ## ---- Friction cone constraints ----
     opt.g += fric_cone_c(U[:,i]).elements()
     args.lbg += [0.0]*2
@@ -228,11 +198,11 @@ elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
 
 ## Initialize variables for plotting
 #  -------------------------------------------------------------------
-X_plot = np.empty([N_x, Nidx])
-U_plot = np.empty([N_u, Nidx-1])
+X_plot = np.empty([dyn.Nx, Nidx])
+U_plot = np.empty([dyn.Nu, Nidx-1])
 del_plot = np.empty([1, Nidx-1])
 X_plot[:,0] = x_init_val
-X_future = np.empty([N_x, N_MPC, Nidx])
+X_future = np.empty([dyn.Nx, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
 success = np.empty(Nidx-1)
 cost_plot = np.empty(Nidx-1)
@@ -268,7 +238,7 @@ for idx in range(Nidx-1):
     ## ---- Update initial conditions ----
     u0 = u_opt[:,0].elements()
     # x0 = x_opt[:,1].elements()
-    x0 = (x0 + f_func(x0, u0)*dt).elements()
+    x0 = (x0 + dyn.f(x0, u0)*dt).elements()
     ## ---- Store values for plotting ----
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
@@ -378,17 +348,17 @@ if show_anim:
     fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
     x0 = np.array(X_plot[:,0].T)
-    d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]
+    d0 = np.array(cs.mtimes(dyn.R(x0),[-a/2, -a/2, 0]).T)[0]
     slider, pusher, path_past, path_future = sliding_pack.plots.get_patches_for_square_slider_and_cicle_pusher(
             ax, 
-            p_pusher_func, 
-            R_pusher_func, 
+            dyn.p, 
+            dyn.R, 
             X_plot,
             a, r_pusher)
     # call the animation
     ani = animation.FuncAnimation(fig,
             sliding_pack.plots.animate_square_slider_and_circle_pusher,
-            fargs=(slider, pusher, ax, p_pusher_func, R_pusher_func, X_plot, a, path_past, path_future, X_future),
+            fargs=(slider, pusher, ax, dyn.p, dyn.R, X_plot, a, path_past, path_future, X_future),
             frames=Nidx-1,
             interval=dt*1000,
             blit=True,
