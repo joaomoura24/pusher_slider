@@ -68,12 +68,6 @@ Nidx = int(N)
 # Nidx = 3
 #  -------------------------------------------------------------------
 
-# define optimization problem
-#  -------------------------------------------------------------------
-optObj = sliding_pack.nlp.MPC_nlpClass(
-        dyn, dt=dt)
-#  -------------------------------------------------------------------
-
 ## Define constraint functions
 #  -------------------------------------------------------------------
 ## ---- Input variables ---
@@ -81,7 +75,15 @@ x_next = cs.SX.sym('x_next', dyn.Nx)
 ## ---- Define Dynamic constraints ----
 f_error = cs.Function('f_error', [dyn.x, dyn.u, x_next], 
         [x_next-dyn.x-dt*dyn.f(dyn.x,dyn.u)])
+F_error = f_error.map(N_MPC-1)
 fric_cone_idx = dyn.fric_cone_c.map(Nidx-1)
+fric_cone_C = dyn.fric_cone_c.map(N_MPC-1)
+slack_var = cs.SX.sym('slack_var')
+complem_c = cs.Function('fric_cone_lim_c', [dyn.u, slack_var], [cs.vertcat(
+    (miu_p * dyn.u[0] - dyn.u[1])*dyn.u[3] + slack_var +
+    (miu_p * dyn.u[0] + dyn.u[1])*dyn.u[2]
+)])
+complem_C = complem_c.map(N_MPC-1)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
@@ -95,18 +97,20 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 
+# define optimization problem
+#  -------------------------------------------------------------------
+optObj = sliding_pack.nlp.MPC_nlpClass(
+        dyn, N_MPC, X_nom_val, f_lim, psi_dot_lim, psi_lim, dt=dt)
+optObj.buildProblem()
+#  -------------------------------------------------------------------
+
 ## Define variables for optimization
 #  -------------------------------------------------------------------
 ## ---- Input variables ---
-X = cs.SX.sym('X', dyn.Nx, N_MPC)
-U = cs.SX.sym('U', dyn.Nu, N_MPC-1)
 X_nom = cs.SX.sym('X_nom', dyn.Nx, N_MPC)
 ## ---- Initial state and action variables ----
-x_init = cs.SX.sym('x0', dyn.Nx)
-u_init = cs.SX.sym('u0', dyn.Nu)
 x_nom = cs.SX.sym('x_nom', dyn.Nx)
 ## ---- Slack variable for complementarity constraint ----
-del_cc = cs.SX.sym('del_cc', N_MPC-1)
 #  -------------------------------------------------------------------
 
 ## Set up QP Optimization Problem
@@ -118,60 +122,29 @@ args = sliding_pack.opt.OptArgs()
 pos_err = dyn.x - x_nom
 cost_f = cs.Function('cost_f', [dyn.x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
 cost_F = cost_f.map(N_MPC)
-opt.f = cs.sum2(cost_F(X, X_nom))
+opt.f = cs.sum2(cost_F(optObj.X, X_nom))
 Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)
 Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
-opt.f += cs.sum1(Ks*(del_cc**2))
-## ---- Set optimization variables ----
-opt.x = []
-args.x0 = []
-args.lbx = []
-args.ubx = []
-for i in range(N_MPC-1):
-    ## ---- Add States to optimization variables ---
-    opt.x += X[:,i].elements()
-    args.x0 += X_nom_val[:,i].elements()
-    args.lbx += [-cs.inf]*(dyn.Nx-1)
-    args.ubx += [cs.inf]*(dyn.Nx-1)
-    args.lbx += [-psi_lim]
-    args.ubx += [psi_lim]
-    ## ---- Add Actions to optimization variables ---
-    opt.x += U[:,i].elements()
-    args.lbx += [0.0,  -f_lim,         0.0,         0.0]
-    args.ubx += [f_lim, f_lim, psi_dot_lim, psi_dot_lim]
-    args.x0 += [0.0,     0.0, 0.0, 0.0]
-    ## ---- Add slack variables ---
-    opt.x += del_cc[i].elements()
-    args.x0 += [0.0]
-    args.lbx += [-cs.inf]
-    args.ubx += [cs.inf]
-opt.x += X[:,-1].elements()
-args.x0 += X_nom_val[:,-1].elements()
-args.lbx += [-cs.inf]*(dyn.Nx-1)
-args.ubx += [cs.inf]*(dyn.Nx-1)
-args.lbx += [-psi_lim]
-args.ubx += [psi_lim]
+opt.f += cs.sum1(Ks*(optObj.del_cc**2))
 ## ---- Set optimzation constraints ----
-opt.g = (X[:,0]-x_init).elements() ## Initial Conditions
+opt.g = (optObj.X[:,0]-optObj.x0).elements() ## Initial Conditions
 args.lbg = [0.0]*dyn.Nx
 args.ubg = [0.0]*dyn.Nx
-for i in range(N_MPC-1):
-    ## ---- Dynamic constraints ---- 
-    opt.g += f_error(X[:,i], U[:,i], X[:,i+1]).elements()
-    args.lbg += [0]*dyn.Nx
-    args.ubg += [0]*dyn.Nx
-    ## ---- Friction cone constraints ----
-    opt.g += dyn.fric_cone_c(U[:,i]).elements()
-    args.lbg += [0.0]*2
-    args.ubg += [cs.inf]*2
-    ## Complementary constraint
-    opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i] + del_cc[i]]
-    # opt.g += [(miu_p*U[0,i]-U[1,i])*U[3,i]+(miu_p*U[0,i]+U[1,i])*U[2,i]]
-    args.lbg += [0.0]
-    args.ubg += [0.0]
+# ---- Dynamic constraints ---- 
+opt.g += F_error(optObj.X[:, :-1], optObj.U, optObj.X[:, 1:]).elements()
+args.lbg += [0.] * dyn.Nx * (N_MPC-1)
+args.ubg += [0.] * dyn.Nx * (N_MPC-1)
+# ---- Friction cone constraints ----
+opt.g += fric_cone_C(optObj.U).elements()
+args.lbg += [0.0, 0.0] * (N_MPC-1)
+args.ubg += [cs.inf, cs.inf] * (N_MPC-1)
+# Complementary constraint
+opt.g += complem_C(optObj.U, optObj.del_cc.T).elements()
+args.lbg += [0.0] * (N_MPC-1)
+args.ubg += [0.0] * (N_MPC-1)
 ## ---- Set optimization parameters ----
 opt.p = []
-opt.p += x_init.elements()
+opt.p += optObj.x0.elements()
 opt.p += X_nom.elements()
 ## ---- Set solver options ----
 if solver_name == 'ipopt':
@@ -188,7 +161,7 @@ if solver_name == 'qpoases':
 if solver_name == 'gurobi':
     if no_printing: opts_dict['gurobi.OutputFlag'] = 0
 ## ---- Create solver ----
-prob = {'f': opt.f, 'x': cs.vertcat(*opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
+prob = {'f': opt.f, 'x': cs.vertcat(*optObj.opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
 if (solver_name == 'ipopt') or (solver_name == 'snopt'):
     solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
     if code_gen:
@@ -223,7 +196,7 @@ for idx in range(Nidx-1):
     args.p += X_nom_val[:,idx:(idx+N_MPC)].elements()
     ## ---- Solve the optimization ----
     start_time = time.time()
-    sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    sol = solver(x0=optObj.args.x0, lbx=optObj.args.lbx, ubx=optObj.args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
     # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     print('--------------------------------')
@@ -234,10 +207,10 @@ for idx in range(Nidx-1):
     else:
         success[idx] = 0
     cost_plot[idx] = sol['f']
-    xu_opt = sol['x']
+    opt_sol = sol['x']
     ## ---- Compute actual trajectory and controls ----
-    x_opt = cs.horzcat(xu_opt[0::N_xu],xu_opt[1::N_xu],xu_opt[2::N_xu],xu_opt[3::N_xu]).T
-    u_opt = cs.horzcat(xu_opt[4::N_xu],xu_opt[5::N_xu],xu_opt[6::N_xu],xu_opt[7::N_xu]).T
+    x_opt = cs.horzcat(opt_sol[0::N_xu],opt_sol[1::N_xu],opt_sol[2::N_xu],opt_sol[3::N_xu]).T
+    u_opt = cs.horzcat(opt_sol[4::N_xu],opt_sol[5::N_xu],opt_sol[6::N_xu],opt_sol[7::N_xu]).T
     del_opt = x_opt[8::N_xu].elements()
     ## ---- Update initial conditions ----
     u0 = u_opt[:,0].elements()
@@ -249,17 +222,17 @@ for idx in range(Nidx-1):
     X_future[:,:,idx] = np.array(x_opt)
     del_plot[:,idx] = del_opt[0]
     # ---- warm start ---- 
-    # xu_opt[0::N_xu] = [0.0]*(N_MPC)
-    # xu_opt[1::N_xu] = [0.0]*(N_MPC)
-    # xu_opt[2::N_xu] = [0.0]*(N_MPC)
-    # xu_opt[3::N_xu] = [0.0]*(N_MPC)
-    # xu_opt[4::N_xu] = [0.0]*(N_MPC-1)
-    # xu_opt[5::N_xu] = [0.0]*(N_MPC-1)
-    xu_opt[6::N_xu] = [0.0]*(N_MPC-1)
-    xu_opt[7::N_xu] = [0.0]*(N_MPC-1)
-    xu_opt[8::N_xu] = [0.0]*(N_MPC-1)
-    args.x0 = xu_opt.elements()
-    # args.x0 = [0.0]*(len(args.x0))
+    # opt_sol[0::N_xu] = [0.0]*(N_MPC)
+    # opt_sol[1::N_xu] = [0.0]*(N_MPC)
+    # opt_sol[2::N_xu] = [0.0]*(N_MPC)
+    # opt_sol[3::N_xu] = [0.0]*(N_MPC)
+    # opt_sol[4::N_xu] = [0.0]*(N_MPC-1)
+    # opt_sol[5::N_xu] = [0.0]*(N_MPC-1)
+    opt_sol[6::N_xu] = [0.0]*(N_MPC-1)
+    opt_sol[7::N_xu] = [0.0]*(N_MPC-1)
+    opt_sol[8::N_xu] = [0.0]*(N_MPC-1)
+    optObj.args.x0 = opt_sol.elements()
+    # optObj.args.x0 = [0.0]*(len(optObj.args.x0))
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)

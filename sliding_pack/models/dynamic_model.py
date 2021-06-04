@@ -81,6 +81,9 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # x[2] - slider orientation in the global frame
         # x[3] - angle of pusher relative to slider
         self.x = cs.SX.sym('x', self.Nx)
+        # limits
+        # self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
+        # self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
         # dx - derivative of the state vector
         self.dx = cs.SX.sym('dx', self.Nx)
         # u - control vector
@@ -146,6 +149,10 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
         # define constraint func
         #  -------------------------------------------------------------------
-        self.fric_cone_c = cs.Function('fric_cone_c', [self.u], [cs.vertcat(miu*self.u[0]+self.u[1], miu*self.u[0]-self.u[1])])
+        # control constraints
+        self.fric_cone_c = cs.Function('fric_cone_c', [self.u], [cs.vertcat(
+            miu*self.u[0]+self.u[1],
+            miu*self.u[0]-self.u[1]
+        )])
         #  -------------------------------------------------------------------
 
