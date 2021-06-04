@@ -70,6 +70,7 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # physical constant quantaties
         self.sl = slider_dim  # side dimension of the square slider [m]
         self.r_pusher = pusher_radious  # radius of the cylindrical pusher [m]
+        self.miu = miu  # friction between pusher and slider
         # vector of physical parameters
         self.beta = [self.sl, self.r_pusher]
 
@@ -145,14 +146,5 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         #  -------------------------------------------------------------------
         self.f_ = cs.Function('f_', [__x,__u,__beta], [__f], ['x', 'u', 'b'], ['f'])
         self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
-        #  -------------------------------------------------------------------
-
-        # define constraint func
-        #  -------------------------------------------------------------------
-        # control constraints
-        self.fric_cone_c = cs.Function('fric_cone_c', [self.u], [cs.vertcat(
-            miu*self.u[0]+self.u[1],
-            miu*self.u[0]-self.u[1]
-        )])
         #  -------------------------------------------------------------------
 

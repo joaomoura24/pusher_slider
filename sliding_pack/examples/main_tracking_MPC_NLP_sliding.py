@@ -68,24 +68,6 @@ Nidx = int(N)
 # Nidx = 3
 #  -------------------------------------------------------------------
 
-## Define constraint functions
-#  -------------------------------------------------------------------
-## ---- Input variables ---
-x_next = cs.SX.sym('x_next', dyn.Nx)
-## ---- Define Dynamic constraints ----
-f_error = cs.Function('f_error', [dyn.x, dyn.u, x_next], 
-        [x_next-dyn.x-dt*dyn.f(dyn.x,dyn.u)])
-F_error = f_error.map(N_MPC-1)
-fric_cone_idx = dyn.fric_cone_c.map(Nidx-1)
-fric_cone_C = dyn.fric_cone_c.map(N_MPC-1)
-slack_var = cs.SX.sym('slack_var')
-complem_c = cs.Function('fric_cone_lim_c', [dyn.u, slack_var], [cs.vertcat(
-    (miu_p * dyn.u[0] - dyn.u[1])*dyn.u[3] + slack_var +
-    (miu_p * dyn.u[0] + dyn.u[1])*dyn.u[2]
-)])
-complem_C = complem_c.map(N_MPC-1)
-#  -------------------------------------------------------------------
-
 ## Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.0, N, N_MPC)
@@ -102,6 +84,11 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, d
 optObj = sliding_pack.nlp.MPC_nlpClass(
         dyn, N_MPC, X_nom_val, f_lim, psi_dot_lim, psi_lim, dt=dt)
 optObj.buildProblem()
+#  -------------------------------------------------------------------
+
+## Define constraint functions
+#  -------------------------------------------------------------------
+fric_cone_idx = optObj.fric_cone_c.map(Nidx-1)
 #  -------------------------------------------------------------------
 
 ## Define variables for optimization
@@ -126,22 +113,6 @@ opt.f = cs.sum2(cost_F(optObj.X, X_nom))
 Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)
 Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
 opt.f += cs.sum1(Ks*(optObj.del_cc**2))
-## ---- Set optimzation constraints ----
-opt.g = (optObj.X[:,0]-optObj.x0).elements() ## Initial Conditions
-args.lbg = [0.0]*dyn.Nx
-args.ubg = [0.0]*dyn.Nx
-# ---- Dynamic constraints ---- 
-opt.g += F_error(optObj.X[:, :-1], optObj.U, optObj.X[:, 1:]).elements()
-args.lbg += [0.] * dyn.Nx * (N_MPC-1)
-args.ubg += [0.] * dyn.Nx * (N_MPC-1)
-# ---- Friction cone constraints ----
-opt.g += fric_cone_C(optObj.U).elements()
-args.lbg += [0.0, 0.0] * (N_MPC-1)
-args.ubg += [cs.inf, cs.inf] * (N_MPC-1)
-# Complementary constraint
-opt.g += complem_C(optObj.U, optObj.del_cc.T).elements()
-args.lbg += [0.0] * (N_MPC-1)
-args.ubg += [0.0] * (N_MPC-1)
 ## ---- Set optimization parameters ----
 opt.p = []
 opt.p += optObj.x0.elements()
@@ -161,7 +132,7 @@ if solver_name == 'qpoases':
 if solver_name == 'gurobi':
     if no_printing: opts_dict['gurobi.OutputFlag'] = 0
 ## ---- Create solver ----
-prob = {'f': opt.f, 'x': cs.vertcat(*optObj.opt.x), 'g': cs.vertcat(*opt.g), 'p': cs.vertcat(*opt.p)}
+prob = {'f': opt.f, 'x': cs.vertcat(*optObj.opt.x), 'g': cs.vertcat(*optObj.opt.g), 'p': cs.vertcat(*opt.p)}
 if (solver_name == 'ipopt') or (solver_name == 'snopt'):
     solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
     if code_gen:
@@ -196,7 +167,7 @@ for idx in range(Nidx-1):
     args.p += X_nom_val[:,idx:(idx+N_MPC)].elements()
     ## ---- Solve the optimization ----
     start_time = time.time()
-    sol = solver(x0=optObj.args.x0, lbx=optObj.args.lbx, ubx=optObj.args.ubx, lbg=args.lbg, ubg=args.ubg, p=args.p)
+    sol = solver(x0=optObj.args.x0, lbx=optObj.args.lbx, ubx=optObj.args.ubx, lbg=optObj.args.lbg, ubg=optObj.args.ubg, p=args.p)
     # ---- save computation time ---- 
     comp_time[idx] = time.time() - start_time
     print('--------------------------------')
