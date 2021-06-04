@@ -154,9 +154,9 @@ SL_cc = cs.SX.sym('SL_cc', 2, N_MPC-1)
 opt = sliding_pack.opt.OptVars()
 args = sliding_pack.opt.OptArgs()
 ## ---- Define optimization objective ----------
-pos_err = x - x_nom
-# cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
-cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(x[0:(N_x-1)],cs.mtimes(W_f,x[0:(N_x-1)]))-2*cs.dot(x_nom[0:(N_x-1)],cs.mtimes(W_f,x[0:(N_x-1)]))])
+pos_err = x[0:(N_x-1)] - x_nom[0:(N_x-1)]
+cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
+# cost_f = cs.Function('cost_f', [x, x_nom], [cs.dot(x[0:(N_x-1)],cs.mtimes(W_f,x[0:(N_x-1)]))-2*cs.dot(x_nom[0:(N_x-1)],cs.mtimes(W_f,x[0:(N_x-1)]))])
 cost_F = cost_f.map(N_MPC, 'thread')
 opt.f = cs.sum2(cost_F(X, X_nom))
 Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,N_MPC-1)

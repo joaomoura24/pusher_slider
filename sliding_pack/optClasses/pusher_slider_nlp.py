@@ -9,17 +9,18 @@
 # -------------------------------------------------------------------
 
 # import libraries
+import numpy as np
 import casadi as cs
 import sliding_pack
 
 class MPC_nlpClass():
 
-    def __init__(self, dyn_class, TH, Xnom, f_lim, psi_dot_lim, psi_lim, dt=0.1):
+    def __init__(self, dyn_class, TH, X_nom_val, f_lim, psi_dot_lim, psi_lim, dt=0.1):
 
         # init parameters
         self.TH = TH
         self.dyn = dyn_class
-        self.Xnom = Xnom
+        self.X_nom_val = X_nom_val
         self.f_lim = f_lim
         self.psi_dot_lim = psi_dot_lim
         self.psi_lim = psi_lim
@@ -28,6 +29,8 @@ class MPC_nlpClass():
         self.opt = sliding_pack.opt.OptVars()
         self.opt.x = []
         self.opt.g = []
+        self.opt.f = []
+        self.opt.p = []
         self.args = sliding_pack.opt.OptArgs()
         self.args.x0 = []
         self.args.lbx = []
@@ -38,6 +41,7 @@ class MPC_nlpClass():
         # set optimization variables
         self.X = cs.SX.sym('X', self.dyn.Nx, self.TH)
         self.U = cs.SX.sym('U', self.dyn.Nu, self.TH-1)
+        self.X_nom = cs.SX.sym('X_nom', self.dyn.Nx, TH)
         # initial state
         self.x0 = cs.SX.sym('x0', self.dyn.Nx)
         self.del_cc = cs.SX.sym('del_cc', self.TH-1)
@@ -65,13 +69,23 @@ class MPC_nlpClass():
         self.complem_C = complem_c.map(self.TH-1)
         #  -------------------------------------------------------------------
 
+        #  -------------------------------------------------------------------
+        x_nom = cs.SX.sym('x_nom', self.dyn.Nx)
+        pos_err = self.dyn.x - x_nom
+        W_f = cs.diag(cs.SX([1.0,1.0,0.01,0.0]))
+        cost_f = cs.Function('cost_f', [self.dyn.x, x_nom], [cs.dot(pos_err,cs.mtimes(W_f,pos_err))])
+        self.cost_F = cost_f.map(self.TH)
+        Ks_max = 50.0; Ks_min = 0.1; xs = np.linspace(0,1,self.TH-1)
+        self.Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
+        #  -------------------------------------------------------------------
+
     def buildProblem(self):
 
         ## ---- Set optimization variables ----
         for i in range(self.TH-1):
             ## ---- Add States to optimization variables ---
             self.opt.x += self.X[:,i].elements()
-            self.args.x0 += self.Xnom[:,i].elements()
+            self.args.x0 += self.X_nom_val[:,i].elements()
             self.args.lbx += [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
             self.args.ubx += [cs.inf, cs.inf, cs.inf, self.psi_lim]
             ## ---- Add Actions to optimization variables ---
@@ -85,7 +99,7 @@ class MPC_nlpClass():
             self.args.lbx += [-cs.inf]
             self.args.ubx += [cs.inf]
         self.opt.x += self.X[:,-1].elements()
-        self.args.x0 += self.Xnom[:,-1].elements()
+        self.args.x0 += self.X_nom_val[:,-1].elements()
         self.args.lbx += [-cs.inf]*(self.dyn.Nx-1)
         self.args.ubx += [cs.inf]*(self.dyn.Nx-1)
         self.args.lbx += [-self.psi_lim]
@@ -108,6 +122,14 @@ class MPC_nlpClass():
         self.args.lbg += [0.0] * (self.TH-1)
         self.args.ubg += [0.0] * (self.TH-1)
 
+        ## ---- Set optimization parameters ----
+        self.opt.p = []
+        self.opt.p += self.x0.elements()
+        self.opt.p += self.X_nom.elements()
+
+        ## ---- optimization cost ----
+        self.opt.f = cs.sum2(self.cost_F(self.X, self.X_nom))
+        self.opt.f += cs.sum1(self.Ks*(self.del_cc**2))
 #    def solveProblem(self):
 #        # 
 
