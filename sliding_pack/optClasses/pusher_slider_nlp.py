@@ -9,6 +9,7 @@
 # -------------------------------------------------------------------
 
 # import libraries
+import time
 import numpy as np
 import casadi as cs
 import sliding_pack
@@ -24,6 +25,11 @@ class MPC_nlpClass():
         self.f_lim = f_lim
         self.psi_dot_lim = psi_dot_lim
         self.psi_lim = psi_lim
+
+        # opt var dimensionality
+        self.Nxu = self.dyn.Nx + self.dyn.Nu
+        N_s = 1
+        self.Nopt = self.Nxu + N_s
 
         # initialize variables for opt and args
         self.opt = sliding_pack.opt.OptVars()
@@ -79,7 +85,7 @@ class MPC_nlpClass():
         self.Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
         #  -------------------------------------------------------------------
 
-    def buildProblem(self):
+    def buildProblem(self, solver_name, code_gen=False, no_printing=False):
 
         ## ---- Set optimization variables ----
         for i in range(self.TH-1):
@@ -130,8 +136,68 @@ class MPC_nlpClass():
         ## ---- optimization cost ----
         self.opt.f = cs.sum2(self.cost_F(self.X, self.X_nom))
         self.opt.f += cs.sum1(self.Ks*(self.del_cc**2))
-#    def solveProblem(self):
-#        # 
+
+        # Set up QP Optimization Problem
+        #  -------------------------------------------------------------------
+        # ---- Set solver options ----
+        opts_dict = {'print_time': 0}
+        prog_name = 'MPC' + '_TH' + str(self.TH) + '_' + solver_name + '_codeGen_' + str(code_gen)
+        if solver_name == 'ipopt':
+            if no_printing: opts_dict['ipopt.print_level'] = 0
+            opts_dict['ipopt.jac_d_constant'] = 'yes'
+            opts_dict['ipopt.warm_start_init_point'] = 'yes'
+            opts_dict['ipopt.hessian_constant'] = 'yes'
+        if solver_name == 'snopt':
+            if no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
+            opts_dict['snopt']['Hessian updates'] = 1
+        if solver_name == 'qpoases':
+            if no_printing: opts_dict['printLevel'] = 'none'
+            opts_dict['sparse'] = True
+        if solver_name == 'gurobi':
+            if no_printing: opts_dict['gurobi.OutputFlag'] = 0
+        ## ---- Create solver ----
+        prob = {'f': self.opt.f, 'x': cs.vertcat(*self.opt.x), 'g': cs.vertcat(*self.opt.g), 'p': cs.vertcat(*self.opt.p)}
+        if (solver_name == 'ipopt') or (solver_name == 'snopt'):
+            self.solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
+            if code_gen:
+                if not os.path.isfile('./' + prog_name + '.so'):
+                    self.solver.generate_dependencies(prog_name + '.c')
+                    os.system('gcc -fPIC -shared -O3 ' + prog_name + '.c -o ' + prog_name + '.so')
+                self.solver = cs.nlpsol('solver', solver_name, prog_name + '.so', opts_dict)
+        elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
+            self.solver = cs.qpsol('solver', solver_name, prob, opts_dict)
+        #  -------------------------------------------------------------------
+
+    def solveProblem(self, idx, x0):
+        # ---- setting parameters ---- 
+        p_ = []  # set to empty before reinitialize
+        p_ += x0
+        p_ += self.X_nom_val[:,idx:(idx+self.TH)].elements()
+        # ---- Solve the optimization ----
+        start_time = time.time()
+        sol = self.solver(x0=self.args.x0, lbx=self.args.lbx, ubx=self.args.ubx, lbg=self.args.lbg, ubg=self.args.ubg, p=p_)
+        # ---- save computation time ---- 
+        t_opt = time.time() - start_time
+        # ---- decode solution ----
+        resultFlag = self.solver.stats()['success']
+        opt_sol = sol['x']
+        f_opt = sol['f']
+        x_opt = cs.horzcat(opt_sol[0::self.Nopt],opt_sol[1::self.Nopt],opt_sol[2::self.Nopt],opt_sol[3::self.Nopt]).T
+        u_opt = cs.horzcat(opt_sol[4::self.Nopt],opt_sol[5::self.Nopt],opt_sol[6::self.Nopt],opt_sol[7::self.Nopt]).T
+        other_opt = x_opt[self.Nxu::self.Nopt].elements()
+        # ---- warm start ---- 
+        # opt_sol[0::self.Nopt] = [0.0]*(self.TH)
+        # opt_sol[1::self.Nopt] = [0.0]*(self.TH)
+        # opt_sol[2::self.Nopt] = [0.0]*(self.TH)
+        # opt_sol[3::self.Nopt] = [0.0]*(self.TH)
+        # opt_sol[4::self.Nopt] = [0.0]*(self.TH-1)
+        # opt_sol[5::self.Nopt] = [0.0]*(self.TH-1)
+        opt_sol[6::self.Nopt] = [0.0]*(self.TH-1)
+        opt_sol[7::self.Nopt] = [0.0]*(self.TH-1)
+        opt_sol[8::self.Nopt] = [0.0]*(self.TH-1)
+        self.args.x0 = opt_sol.elements()
+
+        return resultFlag, x_opt, u_opt, other_opt, f_opt, t_opt
 
 #    def decodeSol(self):
 #        #

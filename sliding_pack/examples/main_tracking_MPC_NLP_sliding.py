@@ -11,7 +11,6 @@
 #  -------------------------------------------------------------------
 import os
 import sys
-import time
 import numpy as np
 import casadi as cs
 # import casadi
@@ -30,7 +29,6 @@ dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surfa
 ## Set Problem constants
 #  -------------------------------------------------------------------
 N_s = 1
-N_xu = dyn.Nx + dyn.Nu + N_s # number of optimization variables
 a = 0.09 # side dimension of the square slider in meters
 miu_p = 0.2 # coefficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
@@ -49,13 +47,11 @@ psi_lim = 40*(np.pi/180.0)
 solver_name = 'snopt'
 # solver_name = 'gurobi'
 # solver_name = 'qpoases'
-opts_dict = {'print_time': 0}
 no_printing = True
 code_gen = False
 show_anim = True
 #  -------------------------------------------------------------------
 ## get string name
-prog_name = 'MPC' + '_TH' + str(N_MPC) + '_' + solver_name + '_codeGen_' + str(code_gen)
 #  -------------------------------------------------------------------
 ## Computing Problem constants
 #  -------------------------------------------------------------------
@@ -82,36 +78,7 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, d
 #  -------------------------------------------------------------------
 optObj = sliding_pack.nlp.MPC_nlpClass(
         dyn, N_MPC, X_nom_val, f_lim, psi_dot_lim, psi_lim, dt=dt)
-optObj.buildProblem()
-#  -------------------------------------------------------------------
-
-# Set up QP Optimization Problem
-#  -------------------------------------------------------------------
-# ---- Set solver options ----
-if solver_name == 'ipopt':
-    if no_printing: opts_dict['ipopt.print_level'] = 0
-    opts_dict['ipopt.jac_d_constant'] = 'yes'
-    opts_dict['ipopt.warm_start_init_point'] = 'yes'
-    opts_dict['ipopt.hessian_constant'] = 'yes'
-if solver_name == 'snopt':
-    if no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
-    opts_dict['snopt']['Hessian updates'] = 1
-if solver_name == 'qpoases':
-    if no_printing: opts_dict['printLevel'] = 'none'
-    opts_dict['sparse'] = True
-if solver_name == 'gurobi':
-    if no_printing: opts_dict['gurobi.OutputFlag'] = 0
-## ---- Create solver ----
-prob = {'f': optObj.opt.f, 'x': cs.vertcat(*optObj.opt.x), 'g': cs.vertcat(*optObj.opt.g), 'p': cs.vertcat(*optObj.opt.p)}
-if (solver_name == 'ipopt') or (solver_name == 'snopt'):
-    solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
-    if code_gen:
-        if not os.path.isfile('./' + prog_name + '.so'):
-            solver.generate_dependencies(prog_name + '.c')
-            os.system('gcc -fPIC -shared -O3 ' + prog_name + '.c -o ' + prog_name + '.so')
-        solver = cs.nlpsol('solver', solver_name, prog_name + '.so', opts_dict)
-elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
-    solver = cs.qpsol('solver', solver_name, prob, opts_dict)
+optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------
 
 ## Initialize variables for plotting
@@ -131,49 +98,20 @@ cost_plot = np.empty(Nidx-1)
 x0 = x_init_val
 u0 = u_init_val
 for idx in range(Nidx-1):
-    ## ---- setting parameters ---- 
-    args_p = [] # set to empty before reinitialize
-    args_p += x0
-    args_p += X_nom_val[:,idx:(idx+N_MPC)].elements()
-    ## ---- Solve the optimization ----
-    start_time = time.time()
-    sol = solver(x0=optObj.args.x0, lbx=optObj.args.lbx, ubx=optObj.args.ubx, lbg=optObj.args.lbg, ubg=optObj.args.ubg, p=args_p)
-    # ---- save computation time ---- 
-    comp_time[idx] = time.time() - start_time
-    print('--------------------------------')
-    print(idx,'out of',Nidx-1)
-    stats = solver.stats()
-    if stats['success'] == True:
-        success[idx] = 1
-    else:
-        success[idx] = 0
-    cost_plot[idx] = sol['f']
-    opt_sol = sol['x']
-    ## ---- Compute actual trajectory and controls ----
-    x_opt = cs.horzcat(opt_sol[0::N_xu],opt_sol[1::N_xu],opt_sol[2::N_xu],opt_sol[3::N_xu]).T
-    u_opt = cs.horzcat(opt_sol[4::N_xu],opt_sol[5::N_xu],opt_sol[6::N_xu],opt_sol[7::N_xu]).T
-    del_opt = x_opt[8::N_xu].elements()
-    ## ---- Update initial conditions ----
+    ## ---- solve problem ----
+    resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0)
+    ## ---- update initial state (simulation) ----
     u0 = u_opt[:,0].elements()
     # x0 = x_opt[:,1].elements()
     x0 = (x0 + dyn.f(x0, u0)*dt).elements()
-    ## ---- Store values for plotting ----
+    ## ---- store values for plotting ----
+    comp_time[idx] = t_opt
+    success[idx] = resultFlag
+    cost_plot[idx] = f_opt
     X_plot[:,idx+1] = x0
     U_plot[:,idx] = u0
     X_future[:,:,idx] = np.array(x_opt)
     del_plot[:,idx] = del_opt[0]
-    # ---- warm start ---- 
-    # opt_sol[0::N_xu] = [0.0]*(N_MPC)
-    # opt_sol[1::N_xu] = [0.0]*(N_MPC)
-    # opt_sol[2::N_xu] = [0.0]*(N_MPC)
-    # opt_sol[3::N_xu] = [0.0]*(N_MPC)
-    # opt_sol[4::N_xu] = [0.0]*(N_MPC-1)
-    # opt_sol[5::N_xu] = [0.0]*(N_MPC-1)
-    opt_sol[6::N_xu] = [0.0]*(N_MPC-1)
-    opt_sol[7::N_xu] = [0.0]*(N_MPC-1)
-    opt_sol[8::N_xu] = [0.0]*(N_MPC-1)
-    optObj.args.x0 = opt_sol.elements()
-    # optObj.args.x0 = [0.0]*(len(optObj.args.x0))
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
