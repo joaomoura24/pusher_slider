@@ -28,18 +28,12 @@ dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surfa
 
 ## Set Problem constants
 #  -------------------------------------------------------------------
-N_s = 1
 a = 0.09 # side dimension of the square slider in meters
-miu_p = 0.2 # coefficient of friction between pusher and slider
 T = 12 # time of the simulation is seconds
 freq = 50 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
-# N_MPC = 150 # time horizon for the MPC controller
-# N_MPC = 63 # time horizon for the MPC controller
 N_MPC = 15 # time horizon for the MPC controller
-# N_MPC = 10 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
-u_init_val = [0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
 psi_dot_lim = 3.0 # limit on the actuations
 psi_lim = 40*(np.pi/180.0)
@@ -51,14 +45,10 @@ no_printing = True
 code_gen = False
 show_anim = True
 #  -------------------------------------------------------------------
-## get string name
-#  -------------------------------------------------------------------
-## Computing Problem constants
+# Computing Problem constants
 #  -------------------------------------------------------------------
 dt = 1.0/freq # sampling time
 N = int(T*freq) # total number of iterations
-T_MPC = N_MPC*dt
-# NN = N + N_MPC # total number of steps
 Nidx = int(N)
 # Nidx = 3
 #  -------------------------------------------------------------------
@@ -78,6 +68,7 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, d
 #  -------------------------------------------------------------------
 optObj = sliding_pack.nlp.MPC_nlpClass(
         dyn, N_MPC, X_nom_val, f_lim, psi_dot_lim, psi_lim, dt=dt)
+#  -------------------------------------------------------------------
 optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------
 
@@ -96,7 +87,7 @@ cost_plot = np.empty(Nidx-1)
 ## Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
-u0 = u_init_val
+u0 = [0.0, 0.0, 0.0, 0.0]
 for idx in range(Nidx-1):
     ## ---- solve problem ----
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0)
@@ -204,20 +195,14 @@ if show_anim:
 #  -------------------------------------------------------------------
     fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom, x1_nom)
     # get slider and pusher patches
-    x0 = np.array(X_plot[:,0].T)
-    d0 = np.array(cs.mtimes(dyn.R(x0),[-a/2, -a/2, 0]).T)[0]
-    slider, pusher, path_past, path_future = sliding_pack.plots.get_patches_for_square_slider_and_cicle_pusher(
-            ax, 
-            dyn.p, 
-            dyn.R, 
-            X_plot,
-            a, r_pusher)
+    dyn.set_patches(ax, X_plot)
     # call the animation
-    ani = animation.FuncAnimation(fig,
-            sliding_pack.plots.animate_square_slider_and_circle_pusher,
-            fargs=(slider, pusher, ax, dyn.p, dyn.R, X_plot, a, path_past, path_future, X_future),
+    ani = animation.FuncAnimation(
+            fig,
+            dyn.animate,
+            fargs=(ax, X_plot, X_future),
             frames=Nidx-1,
-            interval=dt*1000,
+            interval=dt*1000,  # microseconds
             blit=True,
             repeat=False,
     )
