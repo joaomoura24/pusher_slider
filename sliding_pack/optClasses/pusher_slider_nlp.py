@@ -9,6 +9,7 @@
 # -------------------------------------------------------------------
 
 # import libraries
+import os
 import time
 import numpy as np
 import casadi as cs
@@ -95,7 +96,7 @@ class MPC_nlpClass():
             self.opt.x += self.U[:,i].elements()
             self.args.lbx += self.dyn.lbu
             self.args.ubx += self.dyn.ubu
-            self.args.x0 += [0.0, 0.0, 0.0, 0.0]
+            self.args.x0 += [0.0]*self.dyn.Nu
             ## ---- Add slack variables ---
             self.opt.x += self.del_cc[i].elements()
             self.args.x0 += [0.0]
@@ -150,7 +151,7 @@ class MPC_nlpClass():
             opts_dict['sparse'] = True
         if solver_name == 'gurobi':
             if no_printing: opts_dict['gurobi.OutputFlag'] = 0
-        ## ---- Create solver ----
+        # ---- Create solver ----
         prob = {'f': self.opt.f, 'x': cs.vertcat(*self.opt.x), 'g': cs.vertcat(*self.opt.g), 'p': cs.vertcat(*self.opt.p)}
         if (solver_name == 'ipopt') or (solver_name == 'snopt'):
             self.solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
@@ -167,7 +168,7 @@ class MPC_nlpClass():
         # ---- setting parameters ---- 
         p_ = []  # set to empty before reinitialize
         p_ += x0
-        p_ += self.X_nom_val[:,idx:(idx+self.TH)].elements()
+        p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
         # ---- Solve the optimization ----
         start_time = time.time()
         sol = self.solver(x0=self.args.x0, lbx=self.args.lbx, ubx=self.args.ubx, lbg=self.args.lbg, ubg=self.args.ubg, p=p_)
@@ -193,6 +194,3 @@ class MPC_nlpClass():
         self.args.x0 = opt_sol.elements()
 
         return resultFlag, x_opt, u_opt, other_opt, f_opt, t_opt
-
-#    def decodeSol(self):
-#        #

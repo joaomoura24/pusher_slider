@@ -9,7 +9,6 @@
 
 ## Import Libraries
 #  -------------------------------------------------------------------
-import os
 import sys
 import numpy as np
 import casadi as cs
@@ -20,24 +19,13 @@ import matplotlib.animation as animation
 import sliding_pack
 #  -------------------------------------------------------------------
 
-# define system dynamics
-#  -------------------------------------------------------------------
-dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
-        slider_dim=0.09,
-        pusher_radious=0.01,
-        miu=0.2,
-        f_lim=0.3,
-        psi_dot_lim=3.0,
-        psi_lim=40*(np.pi/180.0)
-)
-#  -------------------------------------------------------------------
-
 ## Set Problem constants
 #  -------------------------------------------------------------------
 a = 0.09 # side dimension of the square slider in meters
 T = 12 # time of the simulation is seconds
 freq = 50 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
+miu_p = 0.2  # friction between pusher and slider
 N_MPC = 15 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 f_lim = 0.3 # limit on the actuations
@@ -57,6 +45,18 @@ dt = 1.0/freq # sampling time
 N = int(T*freq) # total number of iterations
 Nidx = int(N)
 # Nidx = 3
+#  -------------------------------------------------------------------
+
+# define system dynamics
+#  -------------------------------------------------------------------
+dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
+        slider_dim=a,
+        pusher_radious=r_pusher,
+        miu=miu_p,
+        f_lim=f_lim,
+        psi_dot_lim=psi_dot_lim,
+        psi_lim=psi_lim
+)
 #  -------------------------------------------------------------------
 
 ## Generate Nominal Trajectory
