@@ -16,15 +16,12 @@ import sliding_pack
 
 class MPC_nlpClass():
 
-    def __init__(self, dyn_class, TH, X_nom_val, f_lim, psi_dot_lim, psi_lim, dt=0.1):
+    def __init__(self, dyn_class, TH, X_nom_val, dt=0.1):
 
         # init parameters
         self.TH = TH
         self.dyn = dyn_class
         self.X_nom_val = X_nom_val
-        self.f_lim = f_lim
-        self.psi_dot_lim = psi_dot_lim
-        self.psi_lim = psi_lim
 
         # opt var dimensionality
         self.Nxu = self.dyn.Nx + self.dyn.Nu
@@ -90,26 +87,24 @@ class MPC_nlpClass():
         ## ---- Set optimization variables ----
         for i in range(self.TH-1):
             ## ---- Add States to optimization variables ---
-            self.opt.x += self.X[:,i].elements()
-            self.args.x0 += self.X_nom_val[:,i].elements()
-            self.args.lbx += [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
-            self.args.ubx += [cs.inf, cs.inf, cs.inf, self.psi_lim]
+            self.opt.x += self.X[:, i].elements()
+            self.args.lbx += self.dyn.lbx
+            self.args.ubx += self.dyn.ubx
+            self.args.x0 += self.X_nom_val[:, i].elements()
             ## ---- Add Actions to optimization variables ---
             self.opt.x += self.U[:,i].elements()
-            self.args.lbx += [0.0,  -self.f_lim,         0.0,         0.0]
-            self.args.ubx += [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
-            self.args.x0 += [0.0,     0.0, 0.0, 0.0]
+            self.args.lbx += self.dyn.lbu
+            self.args.ubx += self.dyn.ubu
+            self.args.x0 += [0.0, 0.0, 0.0, 0.0]
             ## ---- Add slack variables ---
             self.opt.x += self.del_cc[i].elements()
             self.args.x0 += [0.0]
             self.args.lbx += [-cs.inf]
             self.args.ubx += [cs.inf]
         self.opt.x += self.X[:,-1].elements()
+        self.args.lbx += self.dyn.lbx
+        self.args.ubx += self.dyn.ubx
         self.args.x0 += self.X_nom_val[:,-1].elements()
-        self.args.lbx += [-cs.inf]*(self.dyn.Nx-1)
-        self.args.ubx += [cs.inf]*(self.dyn.Nx-1)
-        self.args.lbx += [-self.psi_lim]
-        self.args.ubx += [self.psi_lim]
 
         ## ---- Set optimzation constraints ----
         self.opt.g = (self.X[:,0]-self.x0).elements() ## Initial Conditions

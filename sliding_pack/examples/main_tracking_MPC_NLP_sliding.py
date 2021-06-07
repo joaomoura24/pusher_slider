@@ -23,7 +23,13 @@ import sliding_pack
 # define system dynamics
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
-        slider_dim=0.09, pusher_radious=0.01, miu=0.2)
+        slider_dim=0.09,
+        pusher_radious=0.01,
+        miu=0.2,
+        f_lim=0.3,
+        psi_dot_lim=3.0,
+        psi_lim=40*(np.pi/180.0)
+)
 #  -------------------------------------------------------------------
 
 ## Set Problem constants
@@ -67,7 +73,7 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, d
 # define optimization problem
 #  -------------------------------------------------------------------
 optObj = sliding_pack.nlp.MPC_nlpClass(
-        dyn, N_MPC, X_nom_val, f_lim, psi_dot_lim, psi_lim, dt=dt)
+        dyn, N_MPC, X_nom_val, dt=dt)
 #  -------------------------------------------------------------------
 optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------

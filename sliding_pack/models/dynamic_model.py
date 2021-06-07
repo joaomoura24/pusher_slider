@@ -64,16 +64,19 @@ square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_sli
 
 class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
-    def __init__(self, slider_dim=0.09, pusher_radious=0.01, miu=0.3):
+    def __init__(self, slider_dim=0.09, pusher_radious=0.01, miu=0.3, f_lim=0.3, psi_dot_lim=3.0, psi_lim=0.5):
 
         # system constant variables
         self.Nx = 4  # number of state variables
         self.Nu = 4  # number of action variables
 
-        # physical constant quantaties
+        # init parameters
         self.sl = slider_dim  # side dimension of the square slider [m]
         self.r_pusher = pusher_radious  # radius of the cylindrical pusher [m]
         self.miu = miu  # friction between pusher and slider
+        self.f_lim = f_lim
+        self.psi_dot_lim = psi_dot_lim
+        self.psi_lim = psi_lim
         # vector of physical parameters
         self.beta = [self.sl, self.r_pusher]
 
@@ -85,9 +88,6 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # x[2] - slider orientation in the global frame
         # x[3] - angle of pusher relative to slider
         self.x = cs.SX.sym('x', self.Nx)
-        # limits
-        # self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
-        # self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
         # dx - derivative of the state vector
         self.dx = cs.SX.sym('dx', self.Nx)
         # u - control vector
@@ -96,6 +96,14 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # u[2] - rel sliding vel between pusher and slider counterclockwise
         # u[3] - rel sliding vel between pusher and slider clockwise
         self.u = cs.SX.sym('u', self.Nu)
+        #  -------------------------------------------------------------------
+
+        # state and acton limits
+        #  -------------------------------------------------------------------
+        self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
+        self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
+        self.lbu = [0.0,  -self.f_lim, 0.0, 0.0]
+        self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
         #  -------------------------------------------------------------------
 
         # auxiliar symbolic variables
