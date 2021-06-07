@@ -153,34 +153,38 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
     def set_patches(self, ax, x_data):
 
-        x0 = x_data[:,0]
-        d0 = np.array(cs.mtimes(self.R(x0),[-self.sl/2, -self.sl/2, 0]).T)[0]
-        self.slider = patches.Rectangle(x0[0:2]+d0[0:2], self.sl, self.sl, x0[2])
-        self.pusher = patches.Circle(np.array(self.p(x0)), radius=self.r_pusher, color='black')
+        x0 = x_data[:, 0]
+        d0 = np.array(cs.mtimes(self.R(x0), [-self.sl/2, -self.sl/2, 0]).T)[0]
+        self.slider = patches.Rectangle(
+                x0[0:2]+d0[0:2], self.sl, self.sl, x0[2])
+        self.pusher = patches.Circle(
+                np.array(self.p(x0)), radius=self.r_pusher, color='black')
         self.path_past, = ax.plot(x0[0], x0[1], color='orange')
-        self.path_future, = ax.plot(x0[0], x0[1], color='orange', linestyle='dashed')
+        self.path_future, = ax.plot(x0[0], x0[1],
+                color='orange', linestyle='dashed')
         ax.add_patch(self.slider)
         ax.add_patch(self.pusher)
         self.path_past.set_linewidth(2)
 
     def animate(self, i, ax, x_data, X_future=None):
-        xi = x_data[:,i]
+        xi = x_data[:, i]
         # distance between centre of square reference corner
-        di = np.array(cs.mtimes(self.R(xi),[-self.sl/2, -self.sl/2, 0]).T)[0]
+        di = np.array(cs.mtimes(self.R(xi), [-self.sl/2, -self.sl/2, 0]).T)[0]
         # square reference corner
         ci = xi[0:3] + di
         # compute transformation with respect to rotation angle xi[2]
         trans_ax = ax.transData
         coords = trans_ax.transform(ci[0:2])
-        trans_i = transforms.Affine2D().rotate_around(coords[0], coords[1], xi[2])
+        trans_i = transforms.Affine2D().rotate_around(
+                coords[0], coords[1], xi[2])
         # Set changes
         self.slider.set_transform(trans_ax+trans_i)
         self.slider.set_xy([ci[0], ci[1]])
         self.pusher.set_center(np.array(self.p(xi)))
         # Set path changes
         if self.path_past is not None:
-            self.path_past.set_data(x_data[0,0:i],x_data[1,0:i])
+            self.path_past.set_data(x_data[0, 0:i], x_data[1, 0:i])
         if (self.path_future is not None) and (X_future is not None):
-            self.path_future.set_data(X_future[0,:,i], X_future[1,:,i])
+            self.path_future.set_data(X_future[0, :, i], X_future[1, :, i])
         return []
     #  -------------------------------------------------------------------

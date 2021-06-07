@@ -89,20 +89,20 @@ cost_plot = np.empty(Nidx-1)
 x0 = x_init_val
 u0 = [0.0, 0.0, 0.0, 0.0]
 for idx in range(Nidx-1):
-    ## ---- solve problem ----
+    # ---- solve problem ----
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0)
-    ## ---- update initial state (simulation) ----
-    u0 = u_opt[:,0].elements()
+    # ---- update initial state (simulation) ----
+    u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
     x0 = (x0 + dyn.f(x0, u0)*dt).elements()
-    ## ---- store values for plotting ----
+    # ---- store values for plotting ----
     comp_time[idx] = t_opt
     success[idx] = resultFlag
     cost_plot[idx] = f_opt
-    X_plot[:,idx+1] = x0
-    U_plot[:,idx] = u0
-    X_future[:,:,idx] = np.array(x_opt)
-    del_plot[:,idx] = del_opt[0]
+    X_plot[:, idx+1] = x0
+    U_plot[:, idx] = u0
+    X_future[:, :, idx] = np.array(x_opt)
+    del_plot[:, idx] = del_opt[0]
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
