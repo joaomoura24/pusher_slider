@@ -150,6 +150,8 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         self.p_ = cs.Function('p_', [__x,__beta], [__p_pusher], ['x', 'b'], ['p'])
         self.p = cs.Function('p', [self.x], [self.p_(self.x, self.beta)], ['x'], ['p'])
         #  -------------------------------------------------------------------
+        self.s = cs.Function('s', [self.x], [self.x[0:3]], ['x'], ['s'])
+        #  -------------------------------------------------------------------
         # dynamics
         __Jc = cs.SX(2,3)
         __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;
@@ -160,7 +162,6 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         #  -------------------------------------------------------------------
 
     def set_patches(self, ax, x_data):
-
         x0 = x_data[:, 0]
         d0 = np.array(cs.mtimes(self.R(x0), [-self.sl/2, -self.sl/2, 0]).T)[0]
         self.slider = patches.Rectangle(

@@ -9,6 +9,7 @@
 # -------------------------------------------------------------------
 
 # import libraries
+import sys
 import os
 import time
 import numpy as np
@@ -85,30 +86,30 @@ class MPC_nlpClass():
 
     def buildProblem(self, solver_name, code_gen=False, no_printing=False):
 
-        ## ---- Set optimization variables ----
+        # ---- Set optimization variables ----
         for i in range(self.TH-1):
-            ## ---- Add States to optimization variables ---
+            # ---- Add States to optimization variables ---
             self.opt.x += self.X[:, i].elements()
             self.args.lbx += self.dyn.lbx
             self.args.ubx += self.dyn.ubx
             self.args.x0 += self.X_nom_val[:, i].elements()
-            ## ---- Add Actions to optimization variables ---
-            self.opt.x += self.U[:,i].elements()
+            # ---- Add Actions to optimization variables ---
+            self.opt.x += self.U[:, i].elements()
             self.args.lbx += self.dyn.lbu
             self.args.ubx += self.dyn.ubu
             self.args.x0 += [0.0]*self.dyn.Nu
-            ## ---- Add slack variables ---
+            # ---- Add slack variables ---
             self.opt.x += self.del_cc[i].elements()
             self.args.x0 += [0.0]
             self.args.lbx += [-cs.inf]
             self.args.ubx += [cs.inf]
-        self.opt.x += self.X[:,-1].elements()
+        self.opt.x += self.X[:, -1].elements()
         self.args.lbx += self.dyn.lbx
         self.args.ubx += self.dyn.ubx
-        self.args.x0 += self.X_nom_val[:,-1].elements()
+        self.args.x0 += self.X_nom_val[:, -1].elements()
 
-        ## ---- Set optimzation constraints ----
-        self.opt.g = (self.X[:,0]-self.x0).elements() ## Initial Conditions
+        # ---- Set optimzation constraints ----
+        self.opt.g = (self.X[:,0]-self.x0).elements()  # Initial Conditions
         self.args.lbg = [0.0]*self.dyn.Nx
         self.args.ubg = [0.0]*self.dyn.Nx
         # ---- Dynamic constraints ---- 
@@ -178,9 +179,17 @@ class MPC_nlpClass():
         resultFlag = self.solver.stats()['success']
         opt_sol = sol['x']
         f_opt = sol['f']
-        x_opt = cs.horzcat(opt_sol[0::self.Nopt],opt_sol[1::self.Nopt],opt_sol[2::self.Nopt],opt_sol[3::self.Nopt]).T
-        u_opt = cs.horzcat(opt_sol[4::self.Nopt],opt_sol[5::self.Nopt],opt_sol[6::self.Nopt],opt_sol[7::self.Nopt]).T
-        other_opt = x_opt[self.Nxu::self.Nopt].elements()
+        # get x_opt, u_opt, other_opt
+        x_opt = []
+        for i in range(self.dyn.Nx):
+            x_opt = cs.vertcat(x_opt, opt_sol[i::self.Nopt].T)
+        u_opt = []
+        for i in range(self.dyn.Nx, self.Nxu):
+            u_opt = cs.vertcat(u_opt, opt_sol[i::self.Nopt].T)
+        other_opt = []
+        for i in range(self.Nxu, self.Nopt):
+            other_opt = cs.vertcat(other_opt, opt_sol[i::self.Nopt].T)
+        # other_opt = opt_sol[self.Nxu::self.Nopt].elements()
         # ---- warm start ---- 
         # opt_sol[0::self.Nopt] = [0.0]*(self.TH)
         # opt_sol[1::self.Nopt] = [0.0]*(self.TH)
