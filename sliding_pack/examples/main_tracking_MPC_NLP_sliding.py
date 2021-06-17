@@ -121,8 +121,8 @@ t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx]
 t_idx_u = t_N_x[0:Nidx-1]
-fric_cone_idx = optObj.fric_cone_c.map(Nidx-1)
-fric_cone_val = fric_cone_idx(U_plot)
+ctrl_g_idx = dyn.g_u.map(Nidx-1)
+ctrl_g_val = ctrl_g_idx(U_plot, np.zeros((1, Nidx-1)))
 #  -------------------------------------------------------------------
 axs[0,0].plot(t_N_x, X_nom_val[0,0:N].T, color='b', label='nom')
 axs[0,0].plot(t_idx_x, X_plot[0,:], color='g', linestyle='--', label='opt')
@@ -152,8 +152,8 @@ axs[3,0].legend(handles, labels)
 axs[3,0].set_ylabel('x3')
 axs[3,0].grid()
 #  -------------------------------------------------------------------
-axs[4,0].plot(t_idx_u, fric_cone_val[0,:].T, color='b', label='left')
-axs[4,0].plot(t_idx_u, fric_cone_val[1,:].T, color='g', label='right')
+axs[4,0].plot(t_idx_u, ctrl_g_val[0,:].T, color='b', label='left')
+axs[4,0].plot(t_idx_u, ctrl_g_val[1,:].T, color='g', label='right')
 axs[4,0].plot(t_idx_u, (U_plot[2,:].T)*0.01, color='r', label='psi_dot')
 handles, labels = axs[4,0].get_legend_handles_labels()
 axs[4,0].legend(handles, labels)
