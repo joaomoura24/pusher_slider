@@ -55,9 +55,9 @@ class MPC_nlpClass():
         #  -------------------------------------------------------------------
         # ---- Define Dynamic constraints ----
         __x_next = cs.SX.sym('__x_next', self.dyn.Nx)
-        f_error = cs.Function('f_error', [self.dyn.x, self.dyn.u, __x_next],
+        self.f_error = cs.Function('f_error', [self.dyn.x, self.dyn.u, __x_next],
                 [__x_next-self.dyn.x-dt*self.dyn.f(self.dyn.x,self.dyn.u)])
-        self.F_error = f_error.map(TH-1)
+        self.F_error = self.f_error.map(TH-1)
         #  -------------------------------------------------------------------
         # control constraints
         self.fric_cone_c = cs.Function('fric_cone_c', [self.dyn.u], [cs.vertcat(
@@ -72,6 +72,25 @@ class MPC_nlpClass():
             (self.dyn.miu * self.dyn.u[0] + self.dyn.u[1])*self.dyn.u[2]
         )])
         self.complem_C = complem_c.map(self.TH-1)
+        #  -------------------------------------------------------------------
+        self.G_u = self.dyn.g_u.map(self.TH-1)
+        #  -------------------------------------------------------------------
+        # control constraints
+        self.fric_cone_c = cs.Function('fric_cone_c', [self.dyn.u], [cs.vertcat(
+            self.dyn.miu*self.dyn.u[0]+self.dyn.u[1],
+            self.dyn.miu*self.dyn.u[0]-self.dyn.u[1]
+        )])
+        self.fric_cone_C = self.fric_cone_c.map(self.TH-1)
+        #  -------------------------------------------------------------------
+        slack_var = cs.SX.sym('slack_var')
+        complem_c = cs.Function('fric_cone_lim_c', [self.dyn.u, slack_var], [cs.vertcat(
+            (self.dyn.miu * self.dyn.u[0] - self.dyn.u[1])*self.dyn.u[3] + slack_var +
+            (self.dyn.miu * self.dyn.u[0] + self.dyn.u[1])*self.dyn.u[2]
+        )])
+        self.complem_C = complem_c.map(self.TH-1)
+        #  -------------------------------------------------------------------
+        self.G_u = self.dyn.g_u.map(self.TH-1)
+        #  -------------------------------------------------------------------)
         #  -------------------------------------------------------------------
 
         #  -------------------------------------------------------------------
@@ -112,18 +131,29 @@ class MPC_nlpClass():
         self.opt.g = (self.X[:,0]-self.x0).elements()  # Initial Conditions
         self.args.lbg = [0.0]*self.dyn.Nx
         self.args.ubg = [0.0]*self.dyn.Nx
+        # for i in range(self.TH-1):
+        #     self.opt.g += self.f_error(self.X[:, i], self.U[:, i], self.X[:, i+1]).elements()
+        #     self.args.lbg += [0.] * self.dyn.Nx
+        #     self.args.ubg += [0.] * self.dyn.Nx
+        #     self.opt.g += self.dyn.g_u(self.U[:, i], self.del_cc[i]).elements()
+        #     self.args.lbg += self.dyn.g_lb
+        #     self.args.ubg += self.dyn.g_ub
         # ---- Dynamic constraints ---- 
         self.opt.g += self.F_error(self.X[:, :-1], self.U, self.X[:, 1:]).elements()
         self.args.lbg += [0.] * self.dyn.Nx * (self.TH-1)
         self.args.ubg += [0.] * self.dyn.Nx * (self.TH-1)
-        # ---- Friction cone constraints ----
-        self.opt.g += self.fric_cone_C(self.U).elements()
-        self.args.lbg += [0.0, 0.0] * (self.TH-1)
-        self.args.ubg += [cs.inf, cs.inf] * (self.TH-1)
-        # Complementary constraint
-        self.opt.g += self.complem_C(self.U, self.del_cc.T).elements()
-        self.args.lbg += [0.0] * (self.TH-1)
-        self.args.ubg += [0.0] * (self.TH-1)
+        # ---- Friction constraints ----
+        self.opt.g += self.G_u(self.U, self.del_cc.T).elements()
+        self.args.lbg += self.dyn.g_lb * (self.TH-1)
+        self.args.ubg += self.dyn.g_ub * (self.TH-1)
+        # # ---- Friction cone constraints ----
+        # self.opt.g += self.fric_cone_C(self.U).elements()
+        # self.args.lbg += [0.0, 0.0] * (self.TH-1)
+        # self.args.ubg += [cs.inf, cs.inf] * (self.TH-1)
+        # # Complementary constraint
+        # self.opt.g += self.complem_C(self.U, self.del_cc.T).elements()
+        # self.args.lbg += [0.0] * (self.TH-1)
+        # self.args.ubg += [0.0] * (self.TH-1)
 
         ## ---- Set optimization parameters ----
         self.opt.p = []

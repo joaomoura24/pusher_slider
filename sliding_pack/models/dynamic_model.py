@@ -106,6 +106,19 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
         #  -------------------------------------------------------------------
 
+        # control constraints
+        #  -------------------------------------------------------------------
+        slack_var = cs.SX.sym('slack_var')
+        self.g_u = cs.Function('g_u', [self.u, slack_var], [cs.vertcat(
+            self.miu*self.u[0]+self.u[1],  # friction cone edge
+            self.miu*self.u[0]-self.u[1],  # friction cone edge
+            (self.miu * self.u[0] - self.u[1])*self.u[3] + slack_var +
+            (self.miu * self.u[0] + self.u[1])*self.u[2]  # complementarity constraint
+        )], ['u', 'other'], ['g'])
+        self.g_lb = [0.0, 0.0, 0.0]
+        self.g_ub = [cs.inf, cs.inf, 0.0]
+        #  -------------------------------------------------------------------
+
         # auxiliar symbolic variables
         # -------------------------------------------------------------------
         # x - state vector
