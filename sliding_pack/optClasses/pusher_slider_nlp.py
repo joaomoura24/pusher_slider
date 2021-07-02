@@ -27,8 +27,7 @@ class MPC_nlpClass():
 
         # opt var dimensionality
         self.Nxu = self.dyn.Nx + self.dyn.Nu
-        N_s = 1
-        self.Nopt = self.Nxu + N_s
+        self.Nopt = self.Nxu + self.dyn.Nz
 
         # initialize variables for opt and args
         self.opt = sliding_pack.opt.OptVars()
@@ -49,7 +48,7 @@ class MPC_nlpClass():
         self.X_nom = cs.SX.sym('X_nom', self.dyn.Nx, TH)
         # initial state
         self.x0 = cs.SX.sym('x0', self.dyn.Nx)
-        self.del_cc = cs.SX.sym('del_cc', self.TH-1)
+        self.Z = cs.SX.sym('Z', self.dyn.Nz, self.TH-1)
 
         # constraint functions
         #  -------------------------------------------------------------------
@@ -86,11 +85,11 @@ class MPC_nlpClass():
             self.args.lbx += self.dyn.lbu
             self.args.ubx += self.dyn.ubu
             self.args.x0 += [0.0]*self.dyn.Nu
-            # ---- Add slack variables ---
-            self.opt.x += self.del_cc[i].elements()
-            self.args.x0 += [0.0]
-            self.args.lbx += [-cs.inf]
-            self.args.ubx += [cs.inf]
+            # ---- Add slack/additional opt variables ---
+            self.opt.x += self.Z[:, i].elements()
+            self.args.x0 += self.dyn.z0
+            self.args.lbx += self.dyn.lbz
+            self.args.ubx += self.dyn.ubz
         self.opt.x += self.X[:, -1].elements()
         self.args.lbx += self.dyn.lbx
         self.args.ubx += self.dyn.ubx
@@ -105,17 +104,9 @@ class MPC_nlpClass():
         self.args.lbg += [0.] * self.dyn.Nx * (self.TH-1)
         self.args.ubg += [0.] * self.dyn.Nx * (self.TH-1)
         # ---- Friction constraints ----
-        self.opt.g += self.G_u(self.U, self.del_cc.T).elements()
+        self.opt.g += self.G_u(self.U, self.Z.T).elements()
         self.args.lbg += self.dyn.g_lb * (self.TH-1)
         self.args.ubg += self.dyn.g_ub * (self.TH-1)
-        # # ---- Friction cone constraints ----
-        # self.opt.g += self.fric_cone_C(self.U).elements()
-        # self.args.lbg += [0.0, 0.0] * (self.TH-1)
-        # self.args.ubg += [cs.inf, cs.inf] * (self.TH-1)
-        # # Complementary constraint
-        # self.opt.g += self.complem_C(self.U, self.del_cc.T).elements()
-        # self.args.lbg += [0.0] * (self.TH-1)
-        # self.args.ubg += [0.0] * (self.TH-1)
 
         ## ---- Set optimization parameters ----
         self.opt.p = []
@@ -124,7 +115,8 @@ class MPC_nlpClass():
 
         ## ---- optimization cost ----
         self.opt.f = cs.sum2(self.cost_F(self.X, self.X_nom))
-        self.opt.f += cs.sum1(self.Ks*(self.del_cc**2))
+        if self.dyn.Nz > 0:
+            self.opt.f += cs.sum1(self.Ks*(self.Z.T**2))
 
         # Set up QP Optimization Problem
         #  -------------------------------------------------------------------
@@ -181,17 +173,9 @@ class MPC_nlpClass():
         other_opt = []
         for i in range(self.Nxu, self.Nopt):
             other_opt = cs.vertcat(other_opt, opt_sol[i::self.Nopt].T)
-        # other_opt = opt_sol[self.Nxu::self.Nopt].elements()
         # ---- warm start ---- 
-        # opt_sol[0::self.Nopt] = [0.0]*(self.TH)
-        # opt_sol[1::self.Nopt] = [0.0]*(self.TH)
-        # opt_sol[2::self.Nopt] = [0.0]*(self.TH)
-        # opt_sol[3::self.Nopt] = [0.0]*(self.TH)
-        # opt_sol[4::self.Nopt] = [0.0]*(self.TH-1)
-        # opt_sol[5::self.Nopt] = [0.0]*(self.TH-1)
-        opt_sol[6::self.Nopt] = [0.0]*(self.TH-1)
-        opt_sol[7::self.Nopt] = [0.0]*(self.TH-1)
-        opt_sol[8::self.Nopt] = [0.0]*(self.TH-1)
+        for idx in range(self.dyn.Nx, self.Nopt):
+            opt_sol[idx::self.Nopt] = [0.0]*(self.TH-1)
         self.args.x0 = opt_sol.elements()
 
         return resultFlag, x_opt, u_opt, other_opt, f_opt, t_opt

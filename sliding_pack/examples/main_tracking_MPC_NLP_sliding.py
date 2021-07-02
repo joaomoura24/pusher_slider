@@ -11,22 +11,23 @@
 #  -------------------------------------------------------------------
 import sys
 import numpy as np
-import casadi as cs
+# import casadi as cs
 # import casadi
 import matplotlib.pyplot as plt
+plt.rcParams['figure.dpi'] = 150
 import matplotlib.animation as animation
 #  -------------------------------------------------------------------
 import sliding_pack
 #  -------------------------------------------------------------------
 
-## Set Problem constants
+# Set Problem constants
 #  -------------------------------------------------------------------
 a = 0.09 # side dimension of the square slider in meters
 T = 12 # time of the simulation is seconds
-freq = 50 # number of increments per second
+freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
-miu_p = 0.2  # friction between pusher and slider
-N_MPC = 15 # time horizon for the MPC controller
+miu_p = 0.4  # friction between pusher and slider
+N_MPC = 12 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 f_lim = 0.3 # limit on the actuations
 psi_dot_lim = 3.0 # limit on the actuations
@@ -50,6 +51,8 @@ Nidx = int(N)
 # define system dynamics
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
+        mode='sticking_contact',
+        # mode='sliding_contact',
         slider_dim=a,
         pusher_radious=r_pusher,
         miu=miu_p,
@@ -82,7 +85,7 @@ optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------
 X_plot = np.empty([dyn.Nx, Nidx])
 U_plot = np.empty([dyn.Nu, Nidx-1])
-del_plot = np.empty([1, Nidx-1])
+del_plot = np.empty([dyn.Nz, Nidx-1])
 X_plot[:,0] = x_init_val
 X_future = np.empty([dyn.Nx, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
@@ -93,8 +96,11 @@ cost_plot = np.empty(Nidx-1)
 ## Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
+# x0 = [0.0, 0.0, 0.0, 0.0]
 u0 = [0.0, 0.0, 0.0, 0.0]
 for idx in range(Nidx-1):
+    print('-------------------------')
+    print(idx)
     # ---- solve problem ----
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0)
     # ---- update initial state (simulation) ----
@@ -108,15 +114,39 @@ for idx in range(Nidx-1):
     X_plot[:, idx+1] = x0
     U_plot[:, idx] = u0
     X_future[:, :, idx] = np.array(x_opt)
-    del_plot[:, idx] = del_opt[0]
+    if dyn.Nz > 0:
+        del_plot[:, idx] = del_opt[0]
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
 #  -------------------------------------------------------------------
 
+# Animation
+#  -------------------------------------------------------------------
+if show_anim:
+#  -------------------------------------------------------------------
+    fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom, x1_nom)
+    fig.set_size_inches(8, 6, forward=True)
+    # get slider and pusher patches
+    dyn.set_patches(ax, X_plot)
+    # call the animation
+    ani = animation.FuncAnimation(
+            fig,
+            dyn.animate,
+            fargs=(ax, X_plot, X_future),
+            frames=Nidx-1,
+            interval=dt*1000,  # microseconds
+            blit=True,
+            repeat=False,
+    )
+    ## to save animation, uncomment the line below:
+    # ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+#  -------------------------------------------------------------------
+
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(5, 2, sharex=True, figsize=(12,8))
+fig, axs = plt.subplots(5, 2, sharex=True)
+fig.set_size_inches(12, 15, forward=True)
 t_N_x = np.linspace(0, T, N)
 t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx]
@@ -174,7 +204,7 @@ axs[1,1].set_ylabel('u1')
 axs[1,1].grid()
 #  -------------------------------------------------------------------
 axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt+')
-axs[2,1].plot(t_idx_u, U_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt-')
+# axs[2,1].plot(t_idx_u, U_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt-')
 handles, labels = axs[2,1].get_legend_handles_labels()
 axs[2,1].legend(handles, labels)
 axs[2,1].set_ylabel('u2')
@@ -193,27 +223,6 @@ axs[4,1].legend(handles, labels)
 axs[4,1].set_xlabel('time [s]')
 axs[4,1].set_ylabel('u')
 axs[4,1].grid()
-#  -------------------------------------------------------------------
-
-# Animation
-#  -------------------------------------------------------------------
-if show_anim:
-#  -------------------------------------------------------------------
-    fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom, x1_nom)
-    # get slider and pusher patches
-    dyn.set_patches(ax, X_plot)
-    # call the animation
-    ani = animation.FuncAnimation(
-            fig,
-            dyn.animate,
-            fargs=(ax, X_plot, X_future),
-            frames=Nidx-1,
-            interval=dt*1000,  # microseconds
-            blit=True,
-            repeat=False,
-    )
-    ## to save animation, uncomment the line below:
-    # ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------

@@ -11,6 +11,7 @@
 # -------------------------------------------------------------------
 # Import libraries
 # -------------------------------------------------------------------
+import sys
 import numpy as np
 import matplotlib.patches as patches
 import matplotlib.transforms as transforms
@@ -64,13 +65,13 @@ square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_sli
 
 class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
-    def __init__(self, slider_dim=0.09, pusher_radious=0.01, miu=0.3, f_lim=0.3, psi_dot_lim=3.0, psi_lim=0.5):
+    def __init__(self, mode='sliding_contact', slider_dim=0.09, pusher_radious=0.01, miu=0.3, f_lim=0.3, psi_dot_lim=3.0, psi_lim=0.5):
 
         # system constant variables
         self.Nx = 4  # number of state variables
-        self.Nu = 4  # number of action variables
 
         # init parameters
+        self.mode = mode
         self.sl = slider_dim  # side dimension of the square slider [m]
         self.r_pusher = pusher_radious  # radius of the cylindrical pusher [m]
         self.miu = miu  # friction between pusher and slider
@@ -90,34 +91,8 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         self.x = cs.SX.sym('x', self.Nx)
         # dx - derivative of the state vector
         self.dx = cs.SX.sym('dx', self.Nx)
-        # u - control vector
-        # u[0] - normal force in the local frame
-        # u[1] - tangential force in the local frame
-        # u[2] - rel sliding vel between pusher and slider counterclockwise
-        # u[3] - rel sliding vel between pusher and slider clockwise
-        self.u = cs.SX.sym('u', self.Nu)
         #  -------------------------------------------------------------------
 
-        # state and acton limits
-        #  -------------------------------------------------------------------
-        self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
-        self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
-        self.lbu = [0.0,  -self.f_lim, 0.0, 0.0]
-        self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
-        #  -------------------------------------------------------------------
-
-        # control constraints
-        #  -------------------------------------------------------------------
-        slack_var = cs.SX.sym('slack_var')
-        self.g_u = cs.Function('g_u', [self.u, slack_var], [cs.vertcat(
-            self.miu*self.u[0]+self.u[1],  # friction cone edge
-            self.miu*self.u[0]-self.u[1],  # friction cone edge
-            (self.miu * self.u[0] - self.u[1])*self.u[3] + slack_var +
-            (self.miu * self.u[0] + self.u[1])*self.u[2]  # complementarity constraint
-        )], ['u', 'other'], ['g'])
-        self.g_lb = [0.0, 0.0, 0.0]
-        self.g_ub = [cs.inf, cs.inf, 0.0]
-        #  -------------------------------------------------------------------
 
         # auxiliar symbolic variables
         # -------------------------------------------------------------------
@@ -131,10 +106,8 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         __f_norm = cs.SX.sym('__f_norm')  # in local frame [N]
         __f_norm = cs.SX.sym('__f_norm')  # in  local frame [N]
         # rel vel between pusher and slider [rad/s]
-        __psi_dot_ccw = cs.SX.sym('__psi_dot_ccw')
-        # rel vel between pusher and slider [rad/s]
-        __psi_dot_cw = cs.SX.sym('__psi_dot_cw')
-        __u = cs.veccat(v_norm, __f_norm, __psi_dot_ccw, __psi_dot_cw)
+        __psi_dot = cs.SX.sym('__psi_dot')
+        __u = cs.veccat(v_norm, __f_norm, __psi_dot)
         # beta - dynamic parameters
         __sl = cs.SX.sym('__sl')  # slider side lenght
         __r_pusher = cs.SX.sym('__r_pusher')  # radious of the cilindrical pusher
@@ -160,6 +133,12 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher; __rc[1] = __yc
         __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]
         #  -------------------------------------------------------------------
+        __p = cs.SX.sym('p', 2) # slider position
+        __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])
+        __psi_prov = cs.atan2(__rc_prov[1], -__sl/2)
+        self.psi_ = cs.Function('psi_', [__x,__p,__beta], [__psi_prov])
+        self.psi = cs.Function('psi', [self.x,__p], [self.psi_(self.x, __p, self.beta)])
+        #  -------------------------------------------------------------------
         self.p_ = cs.Function('p_', [__x,__beta], [__p_pusher], ['x', 'b'], ['p'])
         self.p = cs.Function('p', [self.x], [self.p_(self.x, self.beta)], ['x'], ['p'])
         #  -------------------------------------------------------------------
@@ -168,10 +147,75 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # dynamics
         __Jc = cs.SX(2,3)
         __Jc[0,0] = 1; __Jc[1,1] = 1; __Jc[0,2] = -__yc; __Jc[1,2] = __xc;
-        __f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A),cs.mtimes(__Jc.T,__u[0:2])),__u[2]-__u[3]))
+        __f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(__R,__A),cs.mtimes(__Jc.T,__u[0:2])),__u[2]))
         #  -------------------------------------------------------------------
         self.f_ = cs.Function('f_', [__x,__u,__beta], [__f], ['x', 'u', 'b'], ['f'])
-        self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
+        #  -------------------------------------------------------------------
+
+        # control constraints
+        #  -------------------------------------------------------------------
+        if mode == 'sliding_contact':
+            # u - control vector
+            # u[0] - normal force in the local frame
+            # u[1] - tangential force in the local frame
+            # u[2] - rel sliding vel between pusher and slider counterclockwise
+            # u[3] - rel sliding vel between pusher and slider clockwise
+            self.Nu = 4  # number of action variables
+            self.u = cs.SX.sym('u', self.Nu)
+            self.z = cs.SX.sym('z')
+            self.z0 = [0.0]
+            self.lbz = [-cs.inf]
+            self.ubz = [cs.inf]
+            self.g_u = cs.Function('g_u', [self.u, self.z], [cs.vertcat(
+                self.miu*self.u[0]+self.u[1],  # friction cone edge
+                self.miu*self.u[0]-self.u[1],  # friction cone edge
+                (self.miu * self.u[0] - self.u[1])*self.u[3] + self.z +
+                (self.miu * self.u[0] + self.u[1])*self.u[2]  # complementarity constraint
+            )], ['u', 'other'], ['g'])
+            self.g_lb = [0.0, 0.0, 0.0]
+            self.g_ub = [cs.inf, cs.inf, 0.0]
+            self.Nz = 1
+            self.Ng_u = 3
+            # state and acton limits
+            #  -------------------------------------------------------------------
+            self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
+            self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
+            self.lbu = [0.0,  -self.f_lim, 0.0, 0.0]
+            self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
+            #  -------------------------------------------------------------------
+            # dynamics equation
+            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u'], ['f'])
+        elif mode == 'sticking_contact':
+            # u - control vector
+            # u[0] - normal force in the local frame
+            # u[1] - tangential force in the local frame
+            # u[2] - rel sliding vel between pusher and slider
+            self.Nu = 3  # number of action variables
+            self.u = cs.SX.sym('u', self.Nu)
+            empty_var = cs.SX.sym('empty_var')
+            self.g_u = cs.Function('g_u', [self.u, empty_var], [cs.vertcat(
+                self.miu*self.u[0]+self.u[1],  # friction cone edge
+                self.miu*self.u[0]-self.u[1]  # friction cone edge
+            )], ['u', 'other'], ['g'])
+            self.g_lb = [0.0, 0.0]
+            self.g_ub = [cs.inf, cs.inf]
+            self.Nz = 0
+            self.z0 = []
+            self.lbz = []
+            self.ubz = []
+            self.Ng_u = 2
+            # state and acton limits
+            #  -------------------------------------------------------------------
+            self.lbx = [-cs.inf, -cs.inf, -cs.inf, 0.0]
+            self.ubx = [cs.inf, cs.inf, cs.inf, 0.0]
+            self.lbu = [0.0,  -self.f_lim, 0.0]
+            self.ubu = [self.f_lim, self.f_lim, 0.0]
+            #  -------------------------------------------------------------------
+            # dynamics equation
+            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
+        else:
+            print('Specified mode ``{}`` does not exist!'.format(self.mode))
+            sys.exit(-1)
         #  -------------------------------------------------------------------
 
     def set_patches(self, ax, x_data):
