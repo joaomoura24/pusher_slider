@@ -189,8 +189,7 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
-            # u[2] - rel sliding vel between pusher and slider
-            self.Nu = 3  # number of action variables
+            self.Nu = 2  # number of action variables
             self.u = cs.SX.sym('u', self.Nu)
             empty_var = cs.SX.sym('empty_var')
             self.g_u = cs.Function('g_u', [self.u, empty_var], [cs.vertcat(
@@ -208,11 +207,11 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             #  -------------------------------------------------------------------
             self.lbx = [-cs.inf, -cs.inf, -cs.inf, 0.0]
             self.ubx = [cs.inf, cs.inf, cs.inf, 0.0]
-            self.lbu = [0.0,  -self.f_lim, 0.0]
-            self.ubu = [self.f_lim, self.f_lim, 0.0]
+            self.lbu = [0.0,  -self.f_lim]
+            self.ubu = [self.f_lim, self.f_lim]
             #  -------------------------------------------------------------------
             # dynamics equation
-            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
+            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u, 0.0), self.beta)],  ['x', 'u'], ['f'])
         else:
             print('Specified mode ``{}`` does not exist!'.format(self.mode))
             sys.exit(-1)
