@@ -51,8 +51,8 @@ Nidx = int(N)
 # define system dynamics
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
-        mode='sticking_contact',
-        # mode='sliding_contact',
+        # mode='sticking_contact',
+        mode='sliding_contact',
         slider_dim=a,
         pusher_radious=r_pusher,
         miu=miu_p,
@@ -71,6 +71,24 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+#  ------------------------------------------------------------------
+
+# Compute nominal actions for sticking contact
+#  ------------------------------------------------------------------
+dynNom = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
+        mode='sticking_contact',
+        slider_dim=a,
+        pusher_radious=r_pusher,
+        miu=miu_p,
+        f_lim=f_lim,
+        psi_dot_lim=psi_dot_lim,
+        psi_lim=psi_lim
+)
+optObjNom = sliding_pack.nlp.MPC_nlpClass(
+        dynNom, Nidx+N_MPC, X_nom_val, dt=dt)
+optObjNom.buildProblem('snopt')
+resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(0,
+        [0.0, 0.0, 0.0, 0.0])
 #  ------------------------------------------------------------------
 
 # define optimization problem
@@ -125,7 +143,12 @@ for idx in range(Nidx-1):
 #  -------------------------------------------------------------------
 if show_anim:
 #  -------------------------------------------------------------------
-    fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom, x1_nom)
+    fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom[:Nidx], x1_nom[:Nidx])
+    # add computed nominal trajectory
+    X_nom_val_opt = np.array(X_nom_val_opt)
+    ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='green',
+            linewidth=2.0, linestyle='dashed')
+    # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
     dyn.set_patches(ax, X_plot)

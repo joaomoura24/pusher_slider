@@ -18,7 +18,7 @@ import sliding_pack
 
 class MPC_nlpClass():
 
-    def __init__(self, dyn_class, TH, X_nom_val, dt=0.1):
+    def __init__(self, dyn_class, TH, X_nom_val, U_nom_val=[], dt=0.1, linDyn=False):
 
         # init parameters
         self.TH = TH
@@ -71,7 +71,7 @@ class MPC_nlpClass():
         self.Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
         #  -------------------------------------------------------------------
 
-    def buildProblem(self, solver_name, code_gen=False, no_printing=False):
+    def buildProblem(self, solver_name, code_gen=False, no_printing=True):
 
         # ---- Set optimization variables ----
         for i in range(self.TH-1):
