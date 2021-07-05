@@ -187,7 +187,7 @@ t_N_u = np.linspace(0, T, N-1)
 t_idx_x = t_N_x[0:Nidx]
 t_idx_u = t_N_x[0:Nidx-1]
 ctrl_g_idx = dyn.g_u.map(Nidx-1)
-ctrl_g_val = ctrl_g_idx(U_plot, np.zeros((1, Nidx-1)))
+ctrl_g_val = ctrl_g_idx(U_plot, np.zeros((dyn.Nz, Nidx-1)))
 #  -------------------------------------------------------------------
 axs[0,0].plot(t_N_x, X_nom_val[0,0:N].T, color='b', label='nom')
 axs[0,0].plot(t_idx_x, X_plot[0,:], color='g', linestyle='--', label='opt')

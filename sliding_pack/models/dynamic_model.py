@@ -162,20 +162,20 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             # u[3] - rel sliding vel between pusher and slider clockwise
             self.Nu = 4  # number of action variables
             self.u = cs.SX.sym('u', self.Nu)
-            self.z = cs.SX.sym('z')
-            self.z0 = [0.0]
-            self.lbz = [-cs.inf]
-            self.ubz = [cs.inf]
+            self.z = cs.SX.sym('z', 2)
+            self.z0 = [0., 0.]
+            self.lbz = [-cs.inf, -cs.inf]
+            self.ubz = [cs.inf, cs.inf]
             self.g_u = cs.Function('g_u', [self.u, self.z], [cs.vertcat(
                 self.miu*self.u[0]+self.u[1],  # friction cone edge
                 self.miu*self.u[0]-self.u[1],  # friction cone edge
-                (self.miu * self.u[0] - self.u[1])*self.u[3] + self.z +
-                (self.miu * self.u[0] + self.u[1])*self.u[2]  # complementarity constraint
+                (self.miu * self.u[0] - self.u[1])*self.u[3] + self.z[0],
+                (self.miu * self.u[0] + self.u[1])*self.u[2] + self.z[1] # complementarity constraint
             )], ['u', 'other'], ['g'])
-            self.g_lb = [0.0, 0.0, 0.0]
-            self.g_ub = [cs.inf, cs.inf, 0.0]
-            self.Nz = 1
-            self.Ng_u = 3
+            self.g_lb = [0., 0., 0., 0.]
+            self.g_ub = [cs.inf, cs.inf, 0., 0.]
+            self.Nz = 2
+            self.Ng_u = 4
             # state and acton limits
             #  -------------------------------------------------------------------
             self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]

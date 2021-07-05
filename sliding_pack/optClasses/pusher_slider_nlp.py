@@ -179,7 +179,7 @@ class MPC_nlpClass():
         self.args.lbg += [0.] * self.dyn.Nx * (self.TH-1)
         self.args.ubg += [0.] * self.dyn.Nx * (self.TH-1)
         # ---- Friction constraints ----
-        self.opt.g += self.G_u(self.U, self.Z.T).elements()
+        self.opt.g += self.G_u(self.U, self.Z).elements()
         self.args.lbg += self.dyn.g_lb * (self.TH-1)
         self.args.ubg += self.dyn.g_ub * (self.TH-1)
         if self.linDyn:
@@ -198,8 +198,10 @@ class MPC_nlpClass():
 
         # ---- optimization cost ----
         self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
-        if self.dyn.Nz > 0:
-            self.opt.f += cs.sum1(self.Ks*(self.Z.T**2))
+        # for i in range(self.dyn.Nz):
+        #     x_opt = cs.vertcat(x_opt, opt_sol[i::self.Nopt].T)
+        for i in range(self.dyn.Nz):
+            self.opt.f += cs.sum1(self.Ks*(self.Z[i].T**2))
 
         # Set up QP Optimization Problem
         #  -------------------------------------------------------------------
