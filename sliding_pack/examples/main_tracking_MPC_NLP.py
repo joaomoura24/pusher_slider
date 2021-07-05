@@ -34,7 +34,7 @@ freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 # N_MPC = 150 # time horizon for the MPC controller
 # N_MPC = 63 # time horizon for the MPC controller
-N_MPC = 15 # time horizon for the MPC controller
+N_MPC = 12 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 u_init_val = [0.0, 0.0, 0.0, 0.0]
 f_lim = 0.3 # limit on the actuations
@@ -164,6 +164,9 @@ sol = solver(x0=args.x0, lbx=args.lbx, ubx=args.ubx, lbg=args.lbg, ubg=args.ubg)
 u_sol = sol['x']
 U_nom_val = cs.horzcat(u_sol[0::N_u],u_sol[1::N_u],u_sol[2::N_u],u_sol[3::N_u]).T
 #  -------------------------------------------------------------------
+f_disc = cs.Function('f_disc', [x, u], [x + f_func(x, u)*dt])
+f_rollout = f_disc.mapaccum(NN-1)
+X_nom_comp = f_rollout(x_init_val, U_nom_val)
 
 ## Define variables for optimization
 #  -------------------------------------------------------------------
@@ -442,6 +445,9 @@ axs[4,1].grid()
 if show_anim:
 #  -------------------------------------------------------------------
     fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom[0:N], x1_nom[0:N])
+    X_nom_comp = np.array(X_nom_comp)
+    ax.plot(X_nom_comp[0, :], X_nom_comp[1, :], color='green',
+            linewidth=2.0, linestyle='dashed')
     # get slider and pusher patches
     x0 = np.array(X_plot[:,0].T)
     d0 = np.array(cs.mtimes(R_pusher_func(x0),[-a/2, -a/2, 0]).T)[0]

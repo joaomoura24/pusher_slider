@@ -11,7 +11,7 @@
 #  -------------------------------------------------------------------
 import sys
 import numpy as np
-# import casadi as cs
+import casadi as cs
 # import casadi
 import matplotlib.pyplot as plt
 plt.rcParams['figure.dpi'] = 150
@@ -39,20 +39,22 @@ solver_name = 'snopt'
 no_printing = True
 code_gen = False
 show_anim = True
+W_x = cs.diag(cs.SX([1.0, 1.0, 0.01, 0.0]))
+contact_mode = 'sliding_contact'
+# contact_mode = 'sticking_contact'
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
 dt = 1.0/freq # sampling time
 N = int(T*freq) # total number of iterations
 Nidx = int(N)
-# Nidx = 3
+# Nidx = 5
 #  -------------------------------------------------------------------
 
 # define system dynamics
 #  -------------------------------------------------------------------
 dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
-        # mode='sticking_contact',
-        mode='sliding_contact',
+        mode=contact_mode,
         slider_dim=a,
         pusher_radious=r_pusher,
         miu=miu_p,
@@ -66,8 +68,8 @@ dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surfa
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -84,34 +86,43 @@ dynNom = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_su
         psi_dot_lim=psi_dot_lim,
         psi_lim=psi_lim
 )
+W_u = cs.diag(cs.SX([0.1, 0.1]))
 optObjNom = sliding_pack.nlp.MPC_nlpClass(
-        dynNom, Nidx+N_MPC, X_nom_val, dt=dt)
+        dynNom, Nidx+N_MPC, W_x, W_u, X_nom_val, dt=dt)
 optObjNom.buildProblem('snopt')
-resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(0,
-        [0.0, 0.0, 0.0, 0.0])
+resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
+        0, [0., 0., 0., 0.])
+if contact_mode == 'sliding_contact':
+    U_nom_val_opt = cs.vertcat(
+            U_nom_val_opt,
+            cs.DM.zeros(dyn.Nu - dynNom.Nu, Nidx+N_MPC-1))
+f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
+f_rollout = f_d.mapaccum(Nidx+N_MPC-1)
+X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  ------------------------------------------------------------------
 
 # define optimization problem
 #  -------------------------------------------------------------------
+W_u = cs.diag(cs.SX(dyn.Nu, 1))
 optObj = sliding_pack.nlp.MPC_nlpClass(
-        dyn, N_MPC, X_nom_val, dt=dt)
+        dyn, N_MPC, W_x, W_u, X_nom_val, U_nom_val_opt, dt=dt, linDyn=False)
 #  -------------------------------------------------------------------
 optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------
 
-## Initialize variables for plotting
+# Initialize variables for plotting
 #  -------------------------------------------------------------------
 X_plot = np.empty([dyn.Nx, Nidx])
 U_plot = np.empty([dyn.Nu, Nidx-1])
 del_plot = np.empty([dyn.Nz, Nidx-1])
-X_plot[:,0] = x_init_val
+X_plot[:, 0] = x_init_val
 X_future = np.empty([dyn.Nx, N_MPC, Nidx])
 comp_time = np.empty(Nidx-1)
 success = np.empty(Nidx-1)
 cost_plot = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 
-## Set arguments and solve
+# Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
 # x0 = [0.0, 0.0, 0.0, 0.0]
@@ -121,6 +132,7 @@ for idx in range(Nidx-1):
     print(idx)
     # ---- solve problem ----
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0)
+    # sys.exit()
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
@@ -146,7 +158,7 @@ if show_anim:
     fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom[:Nidx], x1_nom[:Nidx])
     # add computed nominal trajectory
     X_nom_val_opt = np.array(X_nom_val_opt)
-    ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='green',
+    ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
             linewidth=2.0, linestyle='dashed')
     # set window size
     fig.set_size_inches(8, 6, forward=True)
