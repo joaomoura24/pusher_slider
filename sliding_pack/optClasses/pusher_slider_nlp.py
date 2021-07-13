@@ -110,10 +110,11 @@ class MPC_nlpClass():
                 [cs.dot(__x_bar, cs.mtimes(self.W_x, __x_bar))
                     + cs.dot(self.dyn.u, cs.mtimes(self.W_u, self.dyn.u))])
         self.cost_F = cost_f.map(self.TH-1)
-        Ks_max = 50.0
-        Ks_min = 0.1
-        xs = np.linspace(0, 1, self.TH-1)
-        self.Ks = Ks_max*cs.exp(xs*cs.log(Ks_min/Ks_max))
+        # ------------------------------------------
+        if self.dyn.Nz > 0:
+            self.ks_F = self.dyn.ks_f.map(TH-1)
+            xs = np.linspace(0, 1, self.TH-1)
+            self.Ks = self.ks_F(xs).T
         #  -------------------------------------------------------------------
 
     def buildProblem(self, solver_name, code_gen=False, no_printing=True):
@@ -198,8 +199,6 @@ class MPC_nlpClass():
 
         # ---- optimization cost ----
         self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
-        # for i in range(self.dyn.Nz):
-        #     x_opt = cs.vertcat(x_opt, opt_sol[i::self.Nopt].T)
         for i in range(self.dyn.Nz):
             self.opt.f += cs.sum1(self.Ks*(self.Z[i].T**2))
 

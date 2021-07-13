@@ -64,7 +64,7 @@ dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surfa
 )
 #  -------------------------------------------------------------------
 
-## Generate Nominal Trajectory
+# Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.0, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)

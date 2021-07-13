@@ -176,6 +176,11 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             self.g_ub = [cs.inf, cs.inf, 0., 0.]
             self.Nz = 2
             self.Ng_u = 4
+            # cost gain for extra variable
+            __Ks_max = 50.0
+            __Ks_min = 0.1
+            __i_th = cs.SX.sym('__i_th')
+            self.ks_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])
             # state and acton limits
             #  -------------------------------------------------------------------
             self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
