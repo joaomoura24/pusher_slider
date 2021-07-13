@@ -40,7 +40,7 @@ no_printing = True
 code_gen = False
 show_anim = True
 W_x = cs.diag(cs.SX([1.0, 1.0, 0.01, 0.0]))
-contact_mode = 'sliding_contact'
+contact_mode = 'sliding_contact_cc'
 # contact_mode = 'sticking_contact'
 #  -------------------------------------------------------------------
 # Computing Problem constants
@@ -92,7 +92,7 @@ optObjNom = sliding_pack.nlp.MPC_nlpClass(
 optObjNom.buildProblem('snopt')
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
         0, [0., 0., 0., 0.])
-if contact_mode == 'sliding_contact':
+if contact_mode == 'sliding_contact_cc':
     U_nom_val_opt = cs.vertcat(
             U_nom_val_opt,
             cs.DM.zeros(dyn.Nu - dynNom.Nu, Nidx+N_MPC-1))

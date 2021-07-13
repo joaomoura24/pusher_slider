@@ -40,6 +40,7 @@ class MPC_nlpClass():
         self.opt.g = []
         self.opt.f = []
         self.opt.p = []
+        self.opt.discrete = []
         self.args = sliding_pack.opt.OptArgs()
         self.args.x0 = []
         self.args.lbx = []
@@ -127,20 +128,24 @@ class MPC_nlpClass():
                 self.args.lbx += [-cs.inf]*self.dyn.Nx
                 self.args.ubx += [cs.inf]*self.dyn.Nx
                 self.args.x0 += self.X_nom_val[:, i].elements()
+                self.opt.discrete += [False]*self.dyn.Nx
                 # ---- Add Actions to optimization variables ---
                 self.opt.x += self.U_bar[:, i].elements()
                 self.args.lbx += [-cs.inf]*self.dyn.Nu
                 self.args.ubx += [cs.inf]*self.dyn.Nu
                 self.args.x0 += [0.0]*self.dyn.Nu
+                self.opt.discrete += [False]*self.dyn.Nu
                 # ---- Add slack/additional opt variables ---
                 self.opt.x += self.Z[:, i].elements()
                 self.args.x0 += self.dyn.z0
                 self.args.lbx += self.dyn.lbz
                 self.args.ubx += self.dyn.ubz
+                self.opt.discrete += [self.dyn.z_discrete]*self.dyn.Nz
             self.opt.x += self.X_bar[:, -1].elements()
             self.args.lbx += [-cs.inf]*self.dyn.Nx
             self.args.ubx += [cs.inf]*self.dyn.Nx
             self.args.x0 += self.X_nom_val[:, -1].elements()
+            self.opt.discrete += [False]*self.dyn.Nx
         else:
             for i in range(self.TH-1):
                 # ---- Add States to optimization variables ---
@@ -148,20 +153,24 @@ class MPC_nlpClass():
                 self.args.lbx += self.dyn.lbx
                 self.args.ubx += self.dyn.ubx
                 self.args.x0 += self.X_nom_val[:, i].elements()
+                self.opt.discrete += [False]*self.dyn.Nx
                 # ---- Add Actions to optimization variables ---
                 self.opt.x += self.U[:, i].elements()
                 self.args.lbx += self.dyn.lbu
                 self.args.ubx += self.dyn.ubu
                 self.args.x0 += [0.0]*self.dyn.Nu
+                self.opt.discrete += [False]*self.dyn.Nu
                 # ---- Add slack/additional opt variables ---
                 self.opt.x += self.Z[:, i].elements()
                 self.args.x0 += self.dyn.z0
                 self.args.lbx += self.dyn.lbz
                 self.args.ubx += self.dyn.ubz
+                self.opt.discrete += [self.dyn.z_discrete]*self.dyn.Nz
             self.opt.x += self.X[:, -1].elements()
             self.args.lbx += self.dyn.lbx
             self.args.ubx += self.dyn.ubx
             self.args.x0 += self.X_nom_val[:, -1].elements()
+            self.opt.discrete += [False]*self.dyn.Nx
 
         # ---- Set optimzation constraints ----
         self.opt.g = (self.X[:, 0]-self.x0).elements()  # Initial Conditions
@@ -226,6 +235,8 @@ class MPC_nlpClass():
                 'g': cs.vertcat(*self.opt.g),
                 'p': cs.vertcat(*self.opt.p)
                 }
+        # ---- add discrete flag ----
+        opts_dict['discrete'] = self.opt.discrete  # add integer variables
         if (solver_name == 'ipopt') or (solver_name == 'snopt'):
             self.solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
             if code_gen:

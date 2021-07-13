@@ -65,7 +65,7 @@ square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_sli
 
 class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
-    def __init__(self, mode='sliding_contact', slider_dim=0.09, pusher_radious=0.01, miu=0.3, f_lim=0.3, psi_dot_lim=3.0, psi_lim=0.5):
+    def __init__(self, mode='sliding_contact_cc', slider_dim=0.09, pusher_radious=0.01, miu=0.3, f_lim=0.3, psi_dot_lim=3.0, psi_lim=0.5):
 
         # system constant variables
         self.Nx = 4  # number of state variables
@@ -154,7 +154,7 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
         # control constraints
         #  -------------------------------------------------------------------
-        if mode == 'sliding_contact':
+        if mode == 'sliding_contact_cc':
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
@@ -166,6 +166,8 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             self.z0 = [0., 0.]
             self.lbz = [-cs.inf, -cs.inf]
             self.ubz = [cs.inf, cs.inf]
+            # discrete extra variable
+            self.z_discrete = False
             self.g_u = cs.Function('g_u', [self.u, self.z], [cs.vertcat(
                 self.miu*self.u[0]+self.u[1],  # friction cone edge
                 self.miu*self.u[0]-self.u[1],  # friction cone edge
@@ -207,6 +209,8 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             self.z0 = []
             self.lbz = []
             self.ubz = []
+            # discrete extra variable
+            self.z_discrete = False
             self.Ng_u = 2
             # state and acton limits
             #  -------------------------------------------------------------------
