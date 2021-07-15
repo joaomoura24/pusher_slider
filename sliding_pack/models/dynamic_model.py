@@ -18,10 +18,10 @@ import matplotlib.transforms as transforms
 import casadi as cs
 import sliding_pack
 
-## -------------------------------------------------------------------
-## build dynamic fuction for quasi-static ellipsoidal limit surface
-## -------------------------------------------------------------------
-## x - state vector
+# -------------------------------------------------------------------
+# build dynamic fuction for quasi-static ellipsoidal limit surface
+# -------------------------------------------------------------------
+# x - state vector
 x_slider = cs.SX.sym('x_slider') # in global frame [m]
 y_slider = cs.SX.sym('y_slider') # in global frame [m]
 theta = cs.SX.sym('theta') # in global frame [rad]
@@ -135,7 +135,7 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         #  -------------------------------------------------------------------
         __p = cs.SX.sym('p', 2) # slider position
         __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])
-        __psi_prov = cs.atan2(__rc_prov[1], -__sl/2)
+        __psi_prov = -cs.atan2(__rc_prov[1], __sl/2)
         self.psi_ = cs.Function('psi_', [__x,__p,__beta], [__psi_prov])
         self.psi = cs.Function('psi', [self.x,__p], [self.psi_(self.x, __p, self.beta)])
         #  -------------------------------------------------------------------
@@ -162,10 +162,11 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             # u[3] - rel sliding vel between pusher and slider clockwise
             self.Nu = 4  # number of action variables
             self.u = cs.SX.sym('u', self.Nu)
-            self.z = cs.SX.sym('z', 2)
-            self.z0 = [0., 0.]
-            self.lbz = [-cs.inf, -cs.inf]
-            self.ubz = [cs.inf, cs.inf]
+            self.Nz = 2
+            self.z = cs.SX.sym('z', self.Nz)
+            self.z0 = [0.]*self.Nz
+            self.lbz = [-cs.inf]*self.Nz
+            self.ubz = [cs.inf]*self.Nz
             # discrete extra variable
             self.z_discrete = False
             self.g_u = cs.Function('g_u', [self.u, self.z], [cs.vertcat(
@@ -176,7 +177,6 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             )], ['u', 'other'], ['g'])
             self.g_lb = [0., 0., 0., 0.]
             self.g_ub = [cs.inf, cs.inf, 0., 0.]
-            self.Nz = 2
             self.Ng_u = 4
             # cost gain for extra variable
             __Ks_max = 50.0
@@ -192,6 +192,44 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             #  -------------------------------------------------------------------
             # dynamics equation
             self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u'], ['f'])
+        elif mode == 'sliding_contact_mi':
+            # u - control vector
+            # u[0] - normal force in the local frame
+            # u[1] - tangential force in the local frame
+            # u[2] - rel sliding vel between pusher and slider
+            self.Nu = 3  # number of action variables
+            self.u = cs.SX.sym('u', self.Nu)
+            self.Nz = 3
+            self.z = cs.SX.sym('z', self.Nz)
+            self.z0 = [0]*self.Nz
+            self.lbz = [0]*self.Nz
+            self.ubz = [1]*self.Nz
+            # discrete extra variable
+            self.z_discrete = True
+            self.Ng_u = 7
+            bigM = 500 # big M for the Mixed Integer optimization
+            self.g_u = cs.Function('g_u', [self.u, self.z], [cs.vertcat(
+                self.miu*self.u[0]+self.u[1] + bigM*self.z[1],  # friction cone edge
+                self.miu*self.u[0]-self.u[1] + bigM*self.z[2],  # friction cone edge
+                self.miu*self.u[0]+self.u[1] - bigM*(1-self.z[2]),  # friction cone edge
+                self.miu*self.u[0]-self.u[1] - bigM*(1-self.z[1]),  # friction cone edge
+                self.u[2] + bigM*self.z[2],  # relative rot constraint
+                self.u[2] - bigM*self.z[1],
+                cs.sum1(self.z),  # sum of the integer variables
+            )], ['u', 'other'], ['g'])
+            self.g_lb = [0., 0., -cs.inf, -cs.inf, 0., -cs.inf, 1.]
+            self.g_ub = [cs.inf, cs.inf, 0., 0., cs.inf, 0., 1.]
+            __i_th = cs.SX.sym('__i_th')
+            self.ks_f = cs.Function('ks', [__i_th], [0.])
+            # state and acton limits
+            #  -------------------------------------------------------------------
+            self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
+            self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
+            self.lbu = [0.0,  -self.f_lim, 0.0]
+            self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim]
+            #  -------------------------------------------------------------------
+            # dynamics equation
+            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
         elif mode == 'sticking_contact':
             # u - control vector
             # u[0] - normal force in the local frame

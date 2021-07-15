@@ -27,7 +27,8 @@ T = 12 # time of the simulation is seconds
 freq = 25 # number of increments per second
 r_pusher = 0.01 # radius of the cylindrical pusher in meter
 miu_p = 0.4  # friction between pusher and slider
-N_MPC = 12 # time horizon for the MPC controller
+# N_MPC = 12 # time horizon for the MPC controller
+N_MPC = 25 # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 f_lim = 0.3 # limit on the actuations
 psi_dot_lim = 3.0 # limit on the actuations
@@ -40,8 +41,11 @@ no_printing = True
 code_gen = False
 show_anim = True
 W_x = cs.diag(cs.SX([1.0, 1.0, 0.01, 0.0]))
+# contact_mode = 'sliding_contact_mi'
 contact_mode = 'sliding_contact_cc'
 # contact_mode = 'sticking_contact'
+# linDynFlag = True
+linDynFlag = False
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
@@ -92,20 +96,19 @@ optObjNom = sliding_pack.nlp.MPC_nlpClass(
 optObjNom.buildProblem('snopt')
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
         0, [0., 0., 0., 0.])
-if contact_mode == 'sliding_contact_cc':
-    U_nom_val_opt = cs.vertcat(
-            U_nom_val_opt,
-            cs.DM.zeros(dyn.Nu - dynNom.Nu, Nidx+N_MPC-1))
+U_nom_val_opt = cs.vertcat(
+        U_nom_val_opt,
+        cs.DM.zeros(dyn.Nu - dynNom.Nu, Nidx+N_MPC-1))
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
 f_rollout = f_d.mapaccum(Nidx+N_MPC-1)
-X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
+# X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  ------------------------------------------------------------------
 
 # define optimization problem
 #  -------------------------------------------------------------------
 W_u = cs.diag(cs.SX(dyn.Nu, 1))
 optObj = sliding_pack.nlp.MPC_nlpClass(
-        dyn, N_MPC, W_x, W_u, X_nom_val, U_nom_val_opt, dt=dt, linDyn=False)
+        dyn, N_MPC, W_x, W_u, X_nom_val, U_nom_val_opt, dt=dt, linDyn=linDynFlag)
 #  -------------------------------------------------------------------
 optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------
