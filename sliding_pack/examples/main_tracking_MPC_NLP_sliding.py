@@ -52,7 +52,7 @@ linDynFlag = False
 dt = 1.0/freq # sampling time
 N = int(T*freq) # total number of iterations
 Nidx = int(N)
-# Nidx = 5
+# Nidx = 10
 #  -------------------------------------------------------------------
 
 # define system dynamics
@@ -92,15 +92,15 @@ dynNom = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_su
 )
 W_u = cs.diag(cs.SX([0.1, 0.1]))
 optObjNom = sliding_pack.nlp.MPC_nlpClass(
-        dynNom, Nidx+N_MPC, W_x, W_u, X_nom_val, dt=dt)
+        dynNom, N+N_MPC, W_x, W_u, X_nom_val, dt=dt)
 optObjNom.buildProblem('snopt')
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
         0, [0., 0., 0., 0.])
 U_nom_val_opt = cs.vertcat(
         U_nom_val_opt,
-        cs.DM.zeros(dyn.Nu - dynNom.Nu, Nidx+N_MPC-1))
+        cs.DM.zeros(dyn.Nu - dynNom.Nu, N+N_MPC-1))
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
-f_rollout = f_d.mapaccum(Nidx+N_MPC-1)
+f_rollout = f_d.mapaccum(N+N_MPC-1)
 # X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  ------------------------------------------------------------------
 
@@ -135,7 +135,6 @@ for idx in range(Nidx-1):
     print(idx)
     # ---- solve problem ----
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0)
-    # sys.exit()
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
@@ -148,7 +147,7 @@ for idx in range(Nidx-1):
     U_plot[:, idx] = u0
     X_future[:, :, idx] = np.array(x_opt)
     if dyn.Nz > 0:
-        del_plot[:, idx] = del_opt[0]
+        del_plot[:, idx] = del_opt[:, 0].elements()
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
@@ -183,84 +182,72 @@ if show_anim:
 
 # Plot Optimization Results
 #  -------------------------------------------------------------------
-fig, axs = plt.subplots(5, 2, sharex=True)
-fig.set_size_inches(12, 15, forward=True)
-t_N_x = np.linspace(0, T, N)
-t_N_u = np.linspace(0, T, N-1)
-t_idx_x = t_N_x[0:Nidx]
-t_idx_u = t_N_x[0:Nidx-1]
+fig, axs = plt.subplots(3, 4, sharex=True)
+fig.set_size_inches(10, 10, forward=True)
+t_Nx = np.linspace(0, T, N)
+t_Nu = np.linspace(0, T, N-1)
+t_idx_x = t_Nx[0:Nidx]
+t_idx_u = t_Nx[0:Nidx-1]
 ctrl_g_idx = dyn.g_u.map(Nidx-1)
-ctrl_g_val = ctrl_g_idx(U_plot, np.zeros((dyn.Nz, Nidx-1)))
+ctrl_g_val = ctrl_g_idx(U_plot, del_plot)
 #  -------------------------------------------------------------------
-axs[0,0].plot(t_N_x, X_nom_val[0,0:N].T, color='b', label='nom')
-axs[0,0].plot(t_idx_x, X_plot[0,:], color='g', linestyle='--', label='opt')
-handles, labels = axs[0,0].get_legend_handles_labels()
-axs[0,0].legend(handles, labels)
-axs[0,0].set_ylabel('x0')
-axs[0,0].grid()
+# plot position
+for i in range(dyn.Nx):
+    axs[0, i].plot(t_Nx, X_nom_val[i, 0:N].T, color='red',
+                   linestyle='--', label='nom')
+    axs[0, i].plot(t_Nx, X_nom_val_opt[i, 0:N].T, color='blue',
+                   linestyle='--', label='plan')
+    axs[0, i].plot(t_idx_x, X_plot[i, :], color='orange', label='mpc')
+    handles, labels = axs[0, i].get_legend_handles_labels()
+    axs[0, i].legend(handles, labels)
+    axs[0, i].set_xlabel('time [s]')
+    axs[0, i].set_ylabel('x%d' % i)
+    axs[0, i].grid()
 #  -------------------------------------------------------------------
-axs[1,0].plot(t_N_x, X_nom_val[1,0:N].T, color='b', label='nom')
-axs[1,0].plot(t_idx_x, X_plot[1,:], color='g', linestyle='--', label='opt')
-handles, labels = axs[1,0].get_legend_handles_labels()
-axs[1,0].legend(handles, labels)
-axs[1,0].set_ylabel('x1')
-axs[1,0].grid()
+# plot computation time
+axs[1, 0].plot(t_idx_u, comp_time, color='b')
+handles, labels = axs[1, 0].get_legend_handles_labels()
+axs[1, 0].legend(handles, labels)
+axs[1, 0].set_xlabel('time [s]')
+axs[1, 0].set_ylabel('comp time [s]')
+axs[1, 0].grid()
 #  -------------------------------------------------------------------
-axs[2,0].plot(t_N_x, X_nom_val[2,0:N].T*(180/np.pi), color='b', label='nom')
-axs[2,0].plot(t_idx_x, X_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt')
-handles, labels = axs[2,0].get_legend_handles_labels()
-axs[2,0].legend(handles, labels)
-axs[2,0].set_ylabel('x2')
-axs[2,0].grid()
+# plot computation cost
+axs[1, 1].plot(t_idx_u, cost_plot, color='b', label='cost')
+handles, labels = axs[1, 1].get_legend_handles_labels()
+axs[1, 1].legend(handles, labels)
+axs[1, 1].set_xlabel('time [s]')
+axs[1, 1].set_ylabel('cost')
+axs[1, 1].grid()
 #  -------------------------------------------------------------------
-axs[3,0].plot(t_N_x, X_nom_val[3,0:N].T*(180/np.pi), color='b', label='nom')
-axs[3,0].plot(t_idx_x, X_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt')
-handles, labels = axs[3,0].get_legend_handles_labels()
-axs[3,0].legend(handles, labels)
-axs[3,0].set_ylabel('x3')
-axs[3,0].grid()
+# plot extra variables
+for i in range(dyn.Nz):
+    axs[1, 2].plot(t_idx_u, del_plot[i, :].T, label='s%d' % i)
+handles, labels = axs[1, 2].get_legend_handles_labels()
+axs[1, 2].legend(handles, labels)
+axs[1, 2].set_xlabel('time [s]')
+axs[1, 2].set_ylabel('extra vars')
+axs[1, 2].grid()
 #  -------------------------------------------------------------------
-axs[4,0].plot(t_idx_u, ctrl_g_val[0,:].T, color='b', label='left')
-axs[4,0].plot(t_idx_u, ctrl_g_val[1,:].T, color='g', label='right')
-# axs[4,0].plot(t_idx_u, (U_plot[2,:].T)*0.01, color='r', label='psi_dot')
-handles, labels = axs[4,0].get_legend_handles_labels()
-axs[4,0].legend(handles, labels)
-axs[4,0].set_xlabel('time [s]')
-axs[4,0].set_ylabel('fric cone')
-axs[4,0].grid()
+# plot constraints
+for i in range(dyn.Ng_u):
+    axs[1, 3].plot(t_idx_u, ctrl_g_val[i, :].T, label='g%d' % i)
+handles, labels = axs[1, 3].get_legend_handles_labels()
+axs[1, 3].legend(handles, labels)
+axs[1, 3].set_xlabel('time [s]')
+axs[1, 3].set_ylabel('constraints')
+axs[1, 3].grid()
 #  -------------------------------------------------------------------
-axs[0,1].plot(t_idx_u, U_plot[0,:], color='g', linestyle='--', label='opt')
-handles, labels = axs[0,1].get_legend_handles_labels()
-axs[0,1].legend(handles, labels)
-axs[0,1].set_ylabel('u0')
-axs[0,1].grid()
-#  -------------------------------------------------------------------
-axs[1,1].plot(t_idx_u, U_plot[1,:], color='g', linestyle='--', label='opt')
-handles, labels = axs[1,1].get_legend_handles_labels()
-axs[1,1].legend(handles, labels)
-axs[1,1].set_ylabel('u1')
-axs[1,1].grid()
-#  -------------------------------------------------------------------
-# axs[2,1].plot(t_idx_u, U_plot[2,:]*(180/np.pi), color='g', linestyle='--', label='opt+')
-# axs[2,1].plot(t_idx_u, U_plot[3,:]*(180/np.pi), color='g', linestyle='--', label='opt-')
-# handles, labels = axs[2,1].get_legend_handles_labels()
-# axs[2,1].legend(handles, labels)
-# axs[2,1].set_ylabel('u2')
-# axs[2,1].grid()
-#  -------------------------------------------------------------------
-axs[3,1].plot(t_idx_u, comp_time, color='b')
-handles, labels = axs[3,1].get_legend_handles_labels()
-axs[3,1].legend(handles, labels)
-axs[3,1].set_ylabel('time [s]')
-axs[3,1].grid()
-#  -------------------------------------------------------------------
-# axs[4,1].plot(t_idx_u, success, color='r', label='succ')
-axs[4,1].plot(t_idx_u, cost_plot, color='b', label='cost')
-handles, labels = axs[4,1].get_legend_handles_labels()
-axs[4,1].legend(handles, labels)
-axs[4,1].set_xlabel('time [s]')
-axs[4,1].set_ylabel('u')
-axs[4,1].grid()
+# plot actions
+for i in range(dyn.Nu):
+    axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
+                   linestyle='--', label='plan')
+    axs[2, i].plot(t_idx_u, U_plot[i, :], color='orange', label='mpc')
+    handles, labels = axs[2, i].get_legend_handles_labels()
+    axs[2, i].legend(handles, labels)
+    axs[2, i].set_xlabel('time [s]')
+    axs[2, i].set_ylabel('u%d' % i)
+    axs[2, i].grid()
 #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
