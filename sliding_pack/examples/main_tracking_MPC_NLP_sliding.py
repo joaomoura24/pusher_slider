@@ -46,6 +46,8 @@ contact_mode = 'sliding_contact_cc'
 # contact_mode = 'sticking_contact'
 # linDynFlag = True
 linDynFlag = False
+X_goal = None
+# X_goal = [0., 0.5, 40*(np.pi/180.), 0.]
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
@@ -70,9 +72,9 @@ dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surfa
 
 # Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.0, N, N_MPC)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
@@ -108,7 +110,11 @@ f_rollout = f_d.mapaccum(N+N_MPC-1)
 #  -------------------------------------------------------------------
 W_u = cs.diag(cs.SX(dyn.Nu, 1))
 optObj = sliding_pack.nlp.MPC_nlpClass(
-        dyn, N_MPC, W_x, W_u, X_nom_val, U_nom_val_opt, dt=dt, linDyn=linDynFlag)
+        dyn, N_MPC, W_x, W_u, X_nom_val, U_nom_val_opt,
+        dt=dt,
+        linDyn=linDynFlag,
+        X_goal=X_goal
+)
 #  -------------------------------------------------------------------
 optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------

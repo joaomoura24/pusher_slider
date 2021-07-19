@@ -19,7 +19,7 @@ import sliding_pack
 class MPC_nlpClass():
 
     def __init__(self, dyn_class, TH, W_x, W_u, X_nom_val,
-                 U_nom_val=None, dt=0.1, linDyn=False):
+                 U_nom_val=None, dt=0.1, linDyn=False, X_goal=None):
 
         # init parameters
         self.TH = TH
@@ -29,6 +29,7 @@ class MPC_nlpClass():
         self.X_nom_val = X_nom_val
         self.U_nom_val = U_nom_val
         self.linDyn = linDyn
+        self.X_goal = X_goal
 
         # opt var dimensionality
         self.Nxu = self.dyn.Nx + self.dyn.Nu
@@ -105,12 +106,12 @@ class MPC_nlpClass():
         #  -------------------------------------------------------------------)
 
         #  -------------------------------------------------------------------
-        cost_f = cs.Function(
+        self.cost_f = cs.Function(
                 'cost_f',
                 [__x_bar, self.dyn.u],
                 [cs.dot(__x_bar, cs.mtimes(self.W_x, __x_bar))
                     + cs.dot(self.dyn.u, cs.mtimes(self.W_u, self.dyn.u))])
-        self.cost_F = cost_f.map(self.TH-1)
+        self.cost_F = self.cost_f.map(self.TH-1)
         # ------------------------------------------
         if self.dyn.Nz > 0:
             self.ks_F = self.dyn.ks_f.map(TH-1)
@@ -207,7 +208,10 @@ class MPC_nlpClass():
             self.opt.p += self.U_nom.elements()
 
         # ---- optimization cost ----
-        self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
+        if self.X_goal is None:
+            self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
+        else:
+            self.opt.f = self.cost_f(self.X[:, -1] - self.X_goal, self.U[:, -1])
         for i in range(self.dyn.Nz):
             self.opt.f += cs.sum1(self.Ks*(self.Z[i].T**2))
 
