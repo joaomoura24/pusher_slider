@@ -241,7 +241,7 @@ class MPC_nlpClass():
                 }
         # ---- add discrete flag ----
         opts_dict['discrete'] = self.opt.discrete  # add integer variables
-        if (solver_name == 'ipopt') or (solver_name == 'snopt'):
+        if (solver_name == 'ipopt') or (solver_name == 'snopt') or (solver_name == 'knitro'):
             self.solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
             if code_gen:
                 if not os.path.isfile('./' + prog_name + '.so'):
