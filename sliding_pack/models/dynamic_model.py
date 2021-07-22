@@ -63,23 +63,23 @@ f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,A),cs.mtimes(Jc.T,u[0:2])),u[2]))
 square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_f', [x,u,beta], [f])
 #  -------------------------------------------------------------------
 
-class System_square_slider_quasi_static_ellipsoidal_limit_surface():
+class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
-    def __init__(self, mode='sliding_contact_cc', slider_dim=0.09, pusher_radious=0.01, miu=0.3, f_lim=0.3, psi_dot_lim=3.0, psi_lim=0.5):
+    def __init__(self, configDict, contactMode='sticking'):
+
+        # init parameters
+        self.mode = contactMode
+        self.sl = configDict['sideLenght']  # side dimension of the square slider [m]
+        self.r_pusher = configDict['pusherRadious']  # radius of the cylindrical pusher [m]
+        self.miu = configDict['pusherFricCoef']  # friction between pusher and slider
+        self.f_lim = configDict['pusherForceLim']
+        self.psi_dot_lim = configDict['pusherAngleVelLim']
+        self.psi_lim = configDict['pusherAngleLim']
+        # vector of physical parameters
+        self.beta = [self.sl, self.r_pusher]
 
         # system constant variables
         self.Nx = 4  # number of state variables
-
-        # init parameters
-        self.mode = mode
-        self.sl = slider_dim  # side dimension of the square slider [m]
-        self.r_pusher = pusher_radious  # radius of the cylindrical pusher [m]
-        self.miu = miu  # friction between pusher and slider
-        self.f_lim = f_lim
-        self.psi_dot_lim = psi_dot_lim
-        self.psi_lim = psi_lim
-        # vector of physical parameters
-        self.beta = [self.sl, self.r_pusher]
 
         # vectors of state and control
         #  -------------------------------------------------------------------
@@ -92,7 +92,6 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
         # dx - derivative of the state vector
         self.dx = cs.SX.sym('dx', self.Nx)
         #  -------------------------------------------------------------------
-
 
         # auxiliar symbolic variables
         # -------------------------------------------------------------------
@@ -154,7 +153,7 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
 
         # control constraints
         #  -------------------------------------------------------------------
-        if mode == 'sliding_contact_cc':
+        if self.mode == 'sliding_cc':
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
@@ -192,7 +191,7 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             #  -------------------------------------------------------------------
             # dynamics equation
             self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u'], ['f'])
-        elif mode == 'sliding_contact_mi':
+        elif self.mode == 'sliding_mi':
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame
@@ -230,7 +229,7 @@ class System_square_slider_quasi_static_ellipsoidal_limit_surface():
             #  -------------------------------------------------------------------
             # dynamics equation
             self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
-        elif mode == 'sticking_contact':
+        elif self.mode == 'sticking':
             # u - control vector
             # u[0] - normal force in the local frame
             # u[1] - tangential force in the local frame

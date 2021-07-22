@@ -16,20 +16,27 @@ import numpy as np
 import casadi as cs
 import sliding_pack
 
-class MPC_nlpClass():
+class buildOptObj():
 
-    def __init__(self, dyn_class, TH, W_x, W_u, X_nom_val,
-                 U_nom_val=None, dt=0.1, linDyn=False, X_goal=None):
+    def __init__(self, dyn_class, timeHorizon, configDict, X_nom_val,
+                 U_nom_val=None, dt=0.1):
+                 # # U_nom_val=None, dt=0.1, linDyn=False, X_goal=None):
+    # def __init__(self, dyn_class, TH, W_x, W_u, X_nom_val,
+                 # U_nom_val=None, dt=0.1, linDyn=False, X_goal=None):
 
         # init parameters
-        self.TH = TH
         self.dyn = dyn_class
-        self.W_x = W_x
-        self.W_u = W_u
+        self.TH = timeHorizon
+        self.solver_name = configDict['solverName']
+        self.W_x = cs.diag(cs.SX(configDict['W_x']))
+        self.W_u = cs.diag(cs.SX(configDict['W_u']))
         self.X_nom_val = X_nom_val
         self.U_nom_val = U_nom_val
-        self.linDyn = linDyn
-        self.X_goal = X_goal
+        self.X_goal = configDict['X_goal']
+        self.solverName = configDict['solverName']
+        self.linDyn = configDict['linDynFlag']
+        self.code_gen = configDict['codeGenFlag']
+        self.no_printing = configDict['noPrintingFlag']
 
         # opt var dimensionality
         self.Nxu = self.dyn.Nx + self.dyn.Nu
@@ -50,12 +57,12 @@ class MPC_nlpClass():
         self.args.ubg = []
 
         # set optimization variables
-        self.X_nom = cs.SX.sym('X_nom', self.dyn.Nx, TH)
+        self.X_nom = cs.SX.sym('X_nom', self.dyn.Nx, self.TH)
         if self.linDyn:
-            self.U_nom = cs.SX.sym('U_nom', self.dyn.Nu, TH-1)
+            self.U_nom = cs.SX.sym('U_nom', self.dyn.Nu, self.TH-1)
             # define vars for deviation from nominal path
-            self.X_bar = cs.SX.sym('X_bar', self.dyn.Nx, TH)
-            self.U_bar = cs.SX.sym('U_bar', self.dyn.Nu, TH-1)
+            self.X_bar = cs.SX.sym('X_bar', self.dyn.Nx, self.TH)
+            self.U_bar = cs.SX.sym('U_bar', self.dyn.Nu, self.TH-1)
             # define path variables
             self.X = self.X_nom + self.X_bar
             self.U = self.U_nom + self.U_bar
@@ -99,7 +106,7 @@ class MPC_nlpClass():
                     [self.dyn.x, self.dyn.u, __x_next],
                     [__x_next-self.dyn.x-dt*self.dyn.f(self.dyn.x,self.dyn.u)])
         # ---- Map dynamics constraint ----
-        self.F_error = self.f_error.map(TH-1)
+        self.F_error = self.f_error.map(self.TH-1)
         #  -------------------------------------------------------------------
         # control constraints
         self.G_u = self.dyn.g_u.map(self.TH-1)
@@ -114,12 +121,14 @@ class MPC_nlpClass():
         self.cost_F = self.cost_f.map(self.TH-1)
         # ------------------------------------------
         if self.dyn.Nz > 0:
-            self.ks_F = self.dyn.ks_f.map(TH-1)
+            self.ks_F = self.dyn.ks_f.map(self.TH-1)
             xs = np.linspace(0, 1, self.TH-1)
             self.Ks = self.ks_F(xs).T
         #  -------------------------------------------------------------------
 
-    def buildProblem(self, solver_name, code_gen=False, no_printing=True):
+        #  -------------------------------------------------------------------
+        #  Building the Problem
+        #  -------------------------------------------------------------------
 
         # ---- Set optimization variables ----
         if self.linDyn:
@@ -219,20 +228,20 @@ class MPC_nlpClass():
         #  -------------------------------------------------------------------
         # ---- Set solver options ----
         opts_dict = {'print_time': 0}
-        prog_name = 'MPC' + '_TH' + str(self.TH) + '_' + solver_name + '_codeGen_' + str(code_gen)
-        if solver_name == 'ipopt':
-            if no_printing: opts_dict['ipopt.print_level'] = 0
+        prog_name = 'MPC' + '_TH' + str(self.TH) + '_' + self.solver_name + '_codeGen_' + str(self.code_gen)
+        if self.solver_name == 'ipopt':
+            if self.no_printing: opts_dict['ipopt.print_level'] = 0
             opts_dict['ipopt.jac_d_constant'] = 'yes'
             opts_dict['ipopt.warm_start_init_point'] = 'yes'
             opts_dict['ipopt.hessian_constant'] = 'yes'
-        if solver_name == 'snopt':
-            if no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
+        if self.solver_name == 'snopt':
+            if self.no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
             opts_dict['snopt']['Hessian updates'] = 1
-        if solver_name == 'qpoases':
-            if no_printing: opts_dict['printLevel'] = 'none'
+        if self.solver_name == 'qpoases':
+            if self.no_printing: opts_dict['printLevel'] = 'none'
             opts_dict['sparse'] = True
-        if solver_name == 'gurobi':
-            if no_printing: opts_dict['gurobi.OutputFlag'] = 0
+        if self.solver_name == 'gurobi':
+            if self.no_printing: opts_dict['gurobi.OutputFlag'] = 0
         # ---- Create solver ----
         prob = {'f': self.opt.f,
                 'x': cs.vertcat(*self.opt.x),
@@ -241,15 +250,15 @@ class MPC_nlpClass():
                 }
         # ---- add discrete flag ----
         opts_dict['discrete'] = self.opt.discrete  # add integer variables
-        if (solver_name == 'ipopt') or (solver_name == 'snopt') or (solver_name == 'knitro'):
-            self.solver = cs.nlpsol('solver', solver_name, prob, opts_dict)
-            if code_gen:
+        if (self.solver_name == 'ipopt') or (self.solver_name == 'snopt') or (self.solver_name == 'knitro'):
+            self.solver = cs.nlpsol('solver', self.solver_name, prob, opts_dict)
+            if self.code_gen:
                 if not os.path.isfile('./' + prog_name + '.so'):
                     self.solver.generate_dependencies(prog_name + '.c')
                     os.system('gcc -fPIC -shared -O3 ' + prog_name + '.c -o ' + prog_name + '.so')
-                self.solver = cs.nlpsol('solver', solver_name, prog_name + '.so', opts_dict)
-        elif (solver_name == 'gurobi') or (solver_name == 'qpoases'):
-            self.solver = cs.qpsol('solver', solver_name, prob, opts_dict)
+                self.solver = cs.nlpsol('solver', self.solver_name, prog_name + '.so', opts_dict)
+        elif (self.solver_name == 'gurobi') or (self.solver_name == 'qpoases'):
+            self.solver = cs.qpsol('solver', self.solver_name, prob, opts_dict)
         #  -------------------------------------------------------------------
 
     def solveProblem(self, idx, x0):

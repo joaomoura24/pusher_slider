@@ -20,4 +20,4 @@ from .models import dynamic_model as dyn
 
 from .optClasses import classes4opt as opt
 
-from .optClasses import pusher_slider_nlp as nlp
+from .optClasses import pusher_slider_nlp as to

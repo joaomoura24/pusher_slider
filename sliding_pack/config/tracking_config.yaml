@@ -1,0 +1,21 @@
+#
+# Configuration file for tracking using sliding
+# 
+
+dynamics:
+    sideLenght: 0.09 #  [meter]
+    pusherRadious: 0.01 #  [meter]
+    pusherFricCoef: 0.3
+    pusherForceLim:  0.3
+    pusherAngleLim: 0.5
+    pusherAngleVelLim: 3.0
+
+TO:
+    contactMode: 'sliding_cc'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    solverName: 'snopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    W_x: [1.0, 1.0, 0.01, 0.]  # diagonal state weights
+    W_u: [0., 0., 0., 0.]  # diagonal control weights
+    X_goal: null
+    linDynFlag: False
+    codeGenFlag: False
+    noPrintingFlag: True

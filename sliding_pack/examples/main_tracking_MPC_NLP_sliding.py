@@ -1,78 +1,59 @@
-## Author: Joao Moura
-## Date: 21/08/2020
+# Author: Joao Moura
+# Date: 21/08/2020
 #  -------------------------------------------------------------------
-## Description:
+# Description:
 #  This script implements a non-linear program (NLP) model predictive controller (MPC)
 #  for tracking a trajectory of a square slider object with a single
 #  and sliding contact pusher.
 #  -------------------------------------------------------------------
 
-## Import Libraries
+#  import libraries
 #  -------------------------------------------------------------------
 import sys
+import yaml
 import numpy as np
 import casadi as cs
-# import casadi
 import matplotlib.pyplot as plt
-plt.rcParams['figure.dpi'] = 150
 import matplotlib.animation as animation
 #  -------------------------------------------------------------------
 import sliding_pack
 #  -------------------------------------------------------------------
 
+# Get config files
+#  -------------------------------------------------------------------
+with open('../config/tracking_config.yaml', 'r') as configFile:
+    tracking_config = yaml.load(configFile, Loader=yaml.FullLoader)
+with open('../config/nom_config.yaml', 'r') as configFile:
+    planning_config = yaml.load(configFile, Loader=yaml.FullLoader)
+#  -------------------------------------------------------------------
+
 # Set Problem constants
 #  -------------------------------------------------------------------
-a = 0.09 # side dimension of the square slider in meters
-T = 12 # time of the simulation is seconds
-freq = 25 # number of increments per second
-r_pusher = 0.01 # radius of the cylindrical pusher in meter
-miu_p = 0.4  # friction between pusher and slider
+T = 8  # time of the simulation is seconds
+freq = 25  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
-N_MPC = 25 # time horizon for the MPC controller
+N_MPC = 25  # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
-f_lim = 0.3 # limit on the actuations
-psi_dot_lim = 3.0 # limit on the actuations
-psi_lim = 40*(np.pi/180.0)
-# solver_name = 'ipopt'
-solver_name = 'snopt'
-# solver_name = 'gurobi'
-# solver_name = 'qpoases'
-no_printing = True
-code_gen = False
 show_anim = True
-W_x = cs.diag(cs.SX([1.0, 1.0, 0.01, 0.0]))
-# contact_mode = 'sliding_contact_mi'
-contact_mode = 'sliding_contact_cc'
-# contact_mode = 'sticking_contact'
-# linDynFlag = True
-linDynFlag = False
-X_goal = None
-# X_goal = [0., 0.5, 40*(np.pi/180.), 0.]
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
-dt = 1.0/freq # sampling time
-N = int(T*freq) # total number of iterations
+dt = 1.0/freq  # sampling time
+N = int(T*freq)  # total number of iterations
 Nidx = int(N)
 # Nidx = 10
 #  -------------------------------------------------------------------
 
 # define system dynamics
 #  -------------------------------------------------------------------
-dyn = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
-        mode=contact_mode,
-        slider_dim=a,
-        pusher_radious=r_pusher,
-        miu=miu_p,
-        f_lim=f_lim,
-        psi_dot_lim=psi_dot_lim,
-        psi_lim=psi_lim
+dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
+        tracking_config['dynamics'],
+        tracking_config['TO']['contactMode']
 )
 #  -------------------------------------------------------------------
 
 # Generate Nominal Trajectory
 #  -------------------------------------------------------------------
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
 x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
@@ -83,19 +64,12 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, d
 
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
-dynNom = sliding_pack.dyn.System_square_slider_quasi_static_ellipsoidal_limit_surface(
-        mode='sticking_contact',
-        slider_dim=a,
-        pusher_radious=r_pusher,
-        miu=miu_p,
-        f_lim=f_lim,
-        psi_dot_lim=psi_dot_lim,
-        psi_lim=psi_lim
+dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
+        tracking_config['dynamics'],
+        planning_config['TO']['contactMode']
 )
-W_u = cs.diag(cs.SX([0.1, 0.1]))
-optObjNom = sliding_pack.nlp.MPC_nlpClass(
-        dynNom, N+N_MPC, W_x, W_u, X_nom_val, dt=dt)
-optObjNom.buildProblem('snopt')
+optObjNom = sliding_pack.to.buildOptObj(
+        dynNom, N+N_MPC, planning_config['TO'], X_nom_val, dt=dt)
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
         0, [0., 0., 0., 0.])
 U_nom_val_opt = cs.vertcat(
@@ -108,15 +82,10 @@ f_rollout = f_d.mapaccum(N+N_MPC-1)
 
 # define optimization problem
 #  -------------------------------------------------------------------
-W_u = cs.diag(cs.SX(dyn.Nu, 1))
-optObj = sliding_pack.nlp.MPC_nlpClass(
-        dyn, N_MPC, W_x, W_u, X_nom_val, U_nom_val_opt,
-        dt=dt,
-        linDyn=linDynFlag,
-        X_goal=X_goal
+optObj = sliding_pack.to.buildOptObj(
+        dyn, N_MPC, tracking_config['TO'],
+        X_nom_val, U_nom_val_opt, dt=dt,
 )
-#  -------------------------------------------------------------------
-optObj.buildProblem(solver_name, code_gen, no_printing)
 #  -------------------------------------------------------------------
 
 # Initialize variables for plotting
@@ -134,8 +103,6 @@ cost_plot = np.empty(Nidx-1)
 # Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
-# x0 = [0.0, 0.0, 0.0, 0.0]
-u0 = [0.0, 0.0, 0.0, 0.0]
 for idx in range(Nidx-1):
     print('-------------------------')
     print(idx)
@@ -161,9 +128,11 @@ for idx in range(Nidx-1):
 
 # Animation
 #  -------------------------------------------------------------------
+plt.rcParams['figure.dpi'] = 150
 if show_anim:
-#  -------------------------------------------------------------------
-    fig, ax = sliding_pack.plots.plot_nominal_traj(x0_nom[:Nidx], x1_nom[:Nidx])
+    #  ---------------------------------------------------------------
+    fig, ax = sliding_pack.plots.plot_nominal_traj(
+                x0_nom[:Nidx], x1_nom[:Nidx])
     # add computed nominal trajectory
     X_nom_val_opt = np.array(X_nom_val_opt)
     ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
@@ -182,7 +151,7 @@ if show_anim:
             blit=True,
             repeat=False,
     )
-    ## to save animation, uncomment the line below:
+    # to save animation, uncomment the line below:
     # ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
