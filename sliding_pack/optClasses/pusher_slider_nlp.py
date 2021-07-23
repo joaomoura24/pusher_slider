@@ -20,9 +20,6 @@ class buildOptObj():
 
     def __init__(self, dyn_class, timeHorizon, configDict, X_nom_val,
                  U_nom_val=None, dt=0.1):
-                 # # U_nom_val=None, dt=0.1, linDyn=False, X_goal=None):
-    # def __init__(self, dyn_class, TH, W_x, W_u, X_nom_val,
-                 # U_nom_val=None, dt=0.1, linDyn=False, X_goal=None):
 
         # init parameters
         self.dyn = dyn_class
@@ -121,9 +118,9 @@ class buildOptObj():
         self.cost_F = self.cost_f.map(self.TH-1)
         # ------------------------------------------
         if self.dyn.Nz > 0:
-            self.ks_F = self.dyn.ks_f.map(self.TH-1)
-            xs = np.linspace(0, 1, self.TH-1)
-            self.Ks = self.ks_F(xs).T
+            self.kz_F = self.dyn.kz_f.map(self.TH-1)
+            xz = np.linspace(0, 1, self.TH-1)
+            self.Kz = self.kz_F(xz).T
         #  -------------------------------------------------------------------
 
         #  -------------------------------------------------------------------
@@ -222,7 +219,7 @@ class buildOptObj():
         else:
             self.opt.f = self.cost_f(self.X[:, -1] - self.X_goal, self.U[:, -1])
         for i in range(self.dyn.Nz):
-            self.opt.f += cs.sum1(self.Ks*(self.Z[i].T**2))
+            self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
 
         # Set up QP Optimization Problem
         #  -------------------------------------------------------------------
@@ -235,6 +232,7 @@ class buildOptObj():
             opts_dict['ipopt.warm_start_init_point'] = 'yes'
             opts_dict['ipopt.hessian_constant'] = 'yes'
         if self.solver_name == 'snopt':
+            opts_dict['snopt'] = {}
             if self.no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}
             opts_dict['snopt']['Hessian updates'] = 1
         if self.solver_name == 'qpoases':

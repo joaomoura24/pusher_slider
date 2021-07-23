@@ -75,6 +75,8 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         self.f_lim = configDict['pusherForceLim']
         self.psi_dot_lim = configDict['pusherAngleVelLim']
         self.psi_lim = configDict['pusherAngleLim']
+        self.Kz_max = configDict['Kz_max']
+        self.Kz_min = configDict['Kz_min']
         # vector of physical parameters
         self.beta = [self.sl, self.r_pusher]
 
@@ -119,7 +121,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __int_Area = sliding_pack.integral.square_cs(__sl)
         __c = __int_Area/__Area # ellipsoid approximation ratio
         __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
-        __A[0,0] = __A[1,1] = 1; __A[2,2] = 1/(__c**2);
+        __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2);
         __ctheta = cs.cos(__theta)
         __stheta = cs.sin(__theta)
         __R = cs.SX(3, 3)
@@ -161,6 +163,46 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # u[3] - rel sliding vel between pusher and slider clockwise
             self.Nu = 4  # number of action variables
             self.u = cs.SX.sym('u', self.Nu)
+            self.Nz = 0
+            self.z0 = []
+            self.lbz = []
+            self.ubz = []
+            # discrete extra variable
+            self.z_discrete = False
+            empty_var = cs.SX.sym('empty_var')
+            self.g_u = cs.Function('g_u', [self.u, empty_var], [cs.vertcat(
+                # friction cone edges
+                self.miu*self.u[0]+self.u[1],
+                self.miu*self.u[0]-self.u[1],
+                # complementarity constraint
+                (self.miu * self.u[0] - self.u[1])*self.u[3],
+                (self.miu * self.u[0] + self.u[1])*self.u[2]
+            )], ['u', 'other'], ['g'])
+            self.g_lb = [0., 0., 0., 0.]
+            self.g_ub = [cs.inf, cs.inf, 0., 0.]
+            self.Ng_u = 4
+            # cost gain for extra variable
+            __Ks_max = self.Kz_max
+            __Ks_min = self.Kz_min
+            __i_th = cs.SX.sym('__i_th')
+            self.kz_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])
+            # state and acton limits
+            #  -------------------------------------------------------------------
+            self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
+            self.ubx = [cs.inf, cs.inf, cs.inf, self.psi_lim]
+            self.lbu = [0.0,  -self.f_lim, 0.0, 0.0]
+            self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
+            #  -------------------------------------------------------------------
+            # dynamics equation
+            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u'], ['f'])
+        elif self.mode == 'sliding_cc_slack':
+            # u - control vector
+            # u[0] - normal force in the local frame
+            # u[1] - tangential force in the local frame
+            # u[2] - rel sliding vel between pusher and slider counterclockwise
+            # u[3] - rel sliding vel between pusher and slider clockwise
+            self.Nu = 4  # number of action variables
+            self.u = cs.SX.sym('u', self.Nu)
             self.Nz = 2
             self.z = cs.SX.sym('z', self.Nz)
             self.z0 = [0.]*self.Nz
@@ -169,19 +211,21 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # discrete extra variable
             self.z_discrete = False
             self.g_u = cs.Function('g_u', [self.u, self.z], [cs.vertcat(
-                self.miu*self.u[0]+self.u[1],  # friction cone edge
-                self.miu*self.u[0]-self.u[1],  # friction cone edge
+                # friction cone edges
+                self.miu*self.u[0]+self.u[1],
+                self.miu*self.u[0]-self.u[1],
+                # complementarity constraint
                 (self.miu * self.u[0] - self.u[1])*self.u[3] + self.z[0],
-                (self.miu * self.u[0] + self.u[1])*self.u[2] + self.z[1] # complementarity constraint
+                (self.miu * self.u[0] + self.u[1])*self.u[2] + self.z[1]
             )], ['u', 'other'], ['g'])
             self.g_lb = [0., 0., 0., 0.]
             self.g_ub = [cs.inf, cs.inf, 0., 0.]
             self.Ng_u = 4
             # cost gain for extra variable
-            __Ks_max = 50.0
-            __Ks_min = 0.1
+            __Ks_max = self.Kz_max
+            __Ks_min = self.Kz_min
             __i_th = cs.SX.sym('__i_th')
-            self.ks_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])
+            self.kz_f = cs.Function('ks', [__i_th], [__Ks_max * cs.exp(__i_th * cs.log(__Ks_min / __Ks_max))])
             # state and acton limits
             #  -------------------------------------------------------------------
             self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]
@@ -219,7 +263,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.g_lb = [0., 0., -cs.inf, -cs.inf, 0., -cs.inf, 1.]
             self.g_ub = [cs.inf, cs.inf, 0., 0., cs.inf, 0., 1.]
             __i_th = cs.SX.sym('__i_th')
-            self.ks_f = cs.Function('ks', [__i_th], [0.])
+            self.kz_f = cs.Function('ks', [__i_th], [0.])
             # state and acton limits
             #  -------------------------------------------------------------------
             self.lbx = [-cs.inf, -cs.inf, -cs.inf, -self.psi_lim]

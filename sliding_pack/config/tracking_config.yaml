@@ -9,9 +9,11 @@ dynamics:
     pusherForceLim:  0.3
     pusherAngleLim: 0.5
     pusherAngleVelLim: 3.0
+    Kz_max: 50
+    Kz_min: 0.1
 
 TO:
-    contactMode: 'sliding_cc'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     solverName: 'snopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     W_x: [1.0, 1.0, 0.01, 0.]  # diagonal state weights
     W_u: [0., 0., 0., 0.]  # diagonal control weights

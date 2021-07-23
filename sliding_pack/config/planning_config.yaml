@@ -1,0 +1,28 @@
+#
+# Configuration file for tracking using sliding
+# 
+
+dynamics:
+    sideLenght: 0.09 #  [meter]
+    pusherRadious: 0.01 #  [meter]
+    pusherFricCoef: 0.2
+    pusherForceLim:  0.3
+    pusherAngleLim: 0.5
+    pusherAngleVelLim: 3.0
+    Kz_max: 50
+    Kz_min: 50
+
+TO:
+    # contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    # solverName: 'snopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    W_x: [1.0, 1.0, 0.01, 0.]  # diagonal state weights
+    # W_u: [0.05, 0.05]  # diagonal control weights
+    # W_u: [0.05, 0.05, 0.]  # diagonal control weights
+    W_u: [0.05, 0.05, 0., 0.]  # diagonal control weights
+    # X_goal: [0.3, 0.4, 4.71, 0.]
+    X_goal: null
+    linDynFlag: False
+    codeGenFlag: False
+    noPrintingFlag: False
