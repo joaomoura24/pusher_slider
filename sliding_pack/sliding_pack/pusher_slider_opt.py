@@ -27,6 +27,7 @@ class buildOptObj():
         self.solver_name = configDict['solverName']
         self.W_x = cs.diag(cs.SX(configDict['W_x']))
         self.W_u = cs.diag(cs.SX(configDict['W_u']))
+        self.K_goal = configDict['K_goal']
         self.X_nom_val = X_nom_val
         self.U_nom_val = U_nom_val
         self.X_goal = configDict['X_goal']
@@ -216,6 +217,7 @@ class buildOptObj():
         # ---- optimization cost ----
         if self.X_goal is None:
             self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
+            self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.U[:, -1])
         else:
             self.opt.f = self.cost_f(self.X[:, -1] - self.X_goal, self.U[:, -1])
         for i in range(self.dyn.Nz):
