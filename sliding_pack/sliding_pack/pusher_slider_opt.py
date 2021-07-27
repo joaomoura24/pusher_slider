@@ -26,7 +26,8 @@ class buildOptObj():
         self.TH = timeHorizon
         self.solver_name = configDict['solverName']
         self.W_x = cs.diag(cs.SX(configDict['W_x']))
-        self.W_u = cs.diag(cs.SX(configDict['W_u']))
+        self.W_u = cs.diag(cs.SX(configDict['W_u']))[:self.dyn.Nu,
+                                                     :self.dyn.Nu]
         self.K_goal = configDict['K_goal']
         self.X_nom_val = X_nom_val
         self.U_nom_val = U_nom_val
@@ -221,7 +222,8 @@ class buildOptObj():
         else:
             self.opt.f = self.cost_f(self.X[:, -1] - self.X_goal, self.U[:, -1])
         for i in range(self.dyn.Nz):
-            self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
+            # self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
+            pass
 
         # Set up QP Optimization Problem
         #  -------------------------------------------------------------------

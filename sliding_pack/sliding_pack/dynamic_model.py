@@ -205,7 +205,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.u = cs.SX.sym('u', self.Nu)
             self.Nz = 2
             self.z = cs.SX.sym('z', self.Nz)
-            self.z0 = [0.]*self.Nz
+            self.z0 = [1.]*self.Nz
             self.lbz = [-cs.inf]*self.Nz
             self.ubz = [cs.inf]*self.Nz
             # discrete extra variable
