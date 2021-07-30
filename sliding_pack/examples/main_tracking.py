@@ -29,10 +29,10 @@ with open('../config/nom_config.yaml', 'r') as configFile:
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 8  # time of the simulation is seconds
+T = 20  # time of the simulation is seconds
 freq = 25  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
-N_MPC = 25  # time horizon for the MPC controller
+N_MPC = 20  # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 show_anim = True
 #  -------------------------------------------------------------------
@@ -72,12 +72,15 @@ optObjNom = sliding_pack.to.buildOptObj(
         dynNom, N+N_MPC, planning_config['TO'], X_nom_val, dt=dt)
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
         0, [0., 0., 0., 0.])
-U_nom_val_opt = cs.vertcat(
-        U_nom_val_opt,
-        cs.DM.zeros(dyn.Nu - dynNom.Nu, N+N_MPC-1))
+if dyn.Nu > dynNom.Nu:
+    U_nom_val_opt = cs.vertcat(
+            U_nom_val_opt,
+            cs.DM.zeros(np.abs(dyn.Nu - dynNom.Nu), N+N_MPC-1))
+elif dynNom.Nu > dyn.Nu:
+    U_nom_val_opt = U_nom_val_opt[:dyn.Nu, :]
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
 f_rollout = f_d.mapaccum(N+N_MPC-1)
-# X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
+X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  ------------------------------------------------------------------
 
 # define optimization problem
@@ -134,8 +137,11 @@ if show_anim:
     fig, ax = sliding_pack.plots.plot_nominal_traj(
                 x0_nom[:Nidx], x1_nom[:Nidx])
     # add computed nominal trajectory
-    X_nom_val_opt = np.array(X_nom_val_opt)
-    ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
+    # X_nom_val_opt = np.array(X_nom_val_opt)
+    # ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
+    #         linewidth=2.0, linestyle='dashed')
+    X_nom_comp = np.array(X_nom_comp)
+    ax.plot(X_nom_comp[0, :], X_nom_comp[1, :], color='green',
             linewidth=2.0, linestyle='dashed')
     # set window size
     fig.set_size_inches(8, 6, forward=True)

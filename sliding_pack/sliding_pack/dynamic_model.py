@@ -250,7 +250,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             # discrete extra variable
             self.z_discrete = True
             self.Ng_u = 7
-            bigM = 500 # big M for the Mixed Integer optimization
+            bigM = 500  # big M for the Mixed Integer optimization
             self.g_u = cs.Function('g_u', [self.u, self.z], [cs.vertcat(
                 self.miu*self.u[0]+self.u[1] + bigM*self.z[1],  # friction cone edge
                 self.miu*self.u[0]-self.u[1] + bigM*self.z[2],  # friction cone edge

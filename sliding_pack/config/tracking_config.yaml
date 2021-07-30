@@ -7,14 +7,15 @@ dynamics:
     pusherRadious: 0.01 #  [meter]
     pusherFricCoef: 0.3
     pusherForceLim:  0.3
-    pusherAngleLim: 0.5
-    pusherAngleVelLim: 3.0
+    pusherAngleLim: 0.4
+    pusherAngleVelLim: 2.0
     Kz_max: 50
     Kz_min: 0.1
 
 TO:
     contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
-    solverName: 'snopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     W_x: [1.0, 1.0, 0.01, 0.]  # diagonal state weights
     W_u: [0., 0., 0., 0.]  # diagonal control weights
     K_goal: 1
@@ -22,3 +23,5 @@ TO:
     linDynFlag: False
     codeGenFlag: False
     noPrintingFlag: True
+    phases: null
+    # phases: [1, 5, 5, 5, 3]

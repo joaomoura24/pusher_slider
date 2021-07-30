@@ -36,6 +36,7 @@ class buildOptObj():
         self.linDyn = configDict['linDynFlag']
         self.code_gen = configDict['codeGenFlag']
         self.no_printing = configDict['noPrintingFlag']
+        self.phases = configDict['phases']
 
         # opt var dimensionality
         self.Nxu = self.dyn.Nx + self.dyn.Nu
@@ -73,7 +74,21 @@ class buildOptObj():
             self.X_bar = self.X - self.X_nom
         # initial state
         self.x0 = cs.SX.sym('x0', self.dyn.Nx)
-        self.Z = cs.SX.sym('Z', self.dyn.Nz, self.TH-1)
+        if self.phases is None:
+            self.Nphases = self.TH-1
+            self.Zphases = cs.SX.sym('Z', self.dyn.Nz, self.Nphases)
+            self.Z = self.Zphases
+        else:
+            if np.sum(self.phases) != self.TH-1:
+                print('Error: Number of steps {} in phases does not match time horizon {}-1.'.format(np.sum(self.phases), self.TH)) 
+                sys.exit()
+            else:
+                self.Nphases = len(self.phases)
+                self.Zphases = cs.SX.sym('Z', self.dyn.Nz, self.Nphases)
+                self.Z = cs.repmat(self.Zphases[:, 0], 1, self.phases[0])
+                for i in range(1, self.Nphases):
+                    self.Z = cs.horzcat(self.Z, cs.repmat(self.Zphases[:, i], 1, self.phases[i]))
+        self.Nzvars = self.dyn.Nz * self.Nphases
 
         # constraint functions
         #  -------------------------------------------------------------------
@@ -144,12 +159,6 @@ class buildOptObj():
                 self.args.ubx += [cs.inf]*self.dyn.Nu
                 self.args.x0 += [0.0]*self.dyn.Nu
                 self.opt.discrete += [False]*self.dyn.Nu
-                # ---- Add slack/additional opt variables ---
-                self.opt.x += self.Z[:, i].elements()
-                self.args.x0 += self.dyn.z0
-                self.args.lbx += self.dyn.lbz
-                self.args.ubx += self.dyn.ubz
-                self.opt.discrete += [self.dyn.z_discrete]*self.dyn.Nz
             self.opt.x += self.X_bar[:, -1].elements()
             self.args.lbx += [-cs.inf]*self.dyn.Nx
             self.args.ubx += [cs.inf]*self.dyn.Nx
@@ -169,17 +178,18 @@ class buildOptObj():
                 self.args.ubx += self.dyn.ubu
                 self.args.x0 += [0.0]*self.dyn.Nu
                 self.opt.discrete += [False]*self.dyn.Nu
-                # ---- Add slack/additional opt variables ---
-                self.opt.x += self.Z[:, i].elements()
-                self.args.x0 += self.dyn.z0
-                self.args.lbx += self.dyn.lbz
-                self.args.ubx += self.dyn.ubz
-                self.opt.discrete += [self.dyn.z_discrete]*self.dyn.Nz
             self.opt.x += self.X[:, -1].elements()
             self.args.lbx += self.dyn.lbx
             self.args.ubx += self.dyn.ubx
             self.args.x0 += self.X_nom_val[:, -1].elements()
             self.opt.discrete += [False]*self.dyn.Nx
+        for i in range(self.Nphases):
+            # ---- Add slack/additional opt variables ---
+            self.opt.x += self.Zphases[:, i].elements()
+            self.args.x0 += self.dyn.z0
+            self.args.lbx += self.dyn.lbz
+            self.args.ubx += self.dyn.ubz
+            self.opt.discrete += [self.dyn.z_discrete]*self.dyn.Nz
 
         # ---- Set optimzation constraints ----
         self.opt.g = (self.X[:, 0]-self.x0).elements()  # Initial Conditions
@@ -222,8 +232,7 @@ class buildOptObj():
         else:
             self.opt.f = self.cost_f(self.X[:, -1] - self.X_goal, self.U[:, -1])
         for i in range(self.dyn.Nz):
-            # self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
-            pass
+            self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
 
         # Set up QP Optimization Problem
         #  -------------------------------------------------------------------
@@ -244,6 +253,11 @@ class buildOptObj():
             opts_dict['sparse'] = True
         if self.solver_name == 'gurobi':
             if self.no_printing: opts_dict['gurobi.OutputFlag'] = 0
+        # print('************************')
+        # print(cs.vertcat(*self.opt.x).shape)
+        # print(cs.vertcat(*self.opt.g).shape)
+        # print(cs.vertcat(*self.opt.p).shape)
+        # print('************************')
         # ---- Create solver ----
         prob = {'f': self.opt.f,
                 'x': cs.vertcat(*self.opt.x),
@@ -263,7 +277,8 @@ class buildOptObj():
             self.solver = cs.qpsol('solver', self.solver_name, prob, opts_dict)
         #  -------------------------------------------------------------------
 
-    def solveProblem(self, idx, x0):
+    def solveProblem(self, idx, x0,
+                     x_warmStart=None, u_warmStart=None):
         # ---- setting parameters ---- 
         p_ = []  # set to empty before reinitialize
         p_ += x0
@@ -271,7 +286,22 @@ class buildOptObj():
         if self.linDyn:
             p_ += self.U_nom_val[:, idx:(idx+self.TH-1)].elements()
         # ---- Solve the optimization ----
+        if x_warmStart is not None:
+            for i in range(self.dyn.Nx):
+                # print(len(x_warmStart[i, :].elements()))
+                self.args.x0[i::self.Nopt] = x_warmStart[i, :].elements()
+        if u_warmStart is not None:
+            for i in range(self.dyn.Nx, self.Nxu):
+                self.args.x0[i::self.Nopt] = u_warmStart[i-self.dyn.Nx, :].elements()
         start_time = time.time()
+        # print('-----------------------------')
+        # print(len(self.args.x0))
+        # print(len(self.args.lbx))
+        # print(len(self.args.ubx))
+        # print(len(self.args.lbg))
+        # print(len(self.args.ubg))
+        # print(len(p_))
+        # print('-----------------------------')
         sol = self.solver(
                 x0=self.args.x0,
                 lbx=self.args.lbx, ubx=self.args.ubx,
@@ -284,22 +314,28 @@ class buildOptObj():
         opt_sol = sol['x']
         f_opt = sol['f']
         # get x_opt, u_opt, other_opt
+        opt_sol_xu = opt_sol[:(self.TH*self.Nxu-self.dyn.Nu)]
+        opt_sol_s = opt_sol[(self.TH*self.Nxu-self.dyn.Nu):]
         x_opt = []
         for i in range(self.dyn.Nx):
-            x_opt = cs.vertcat(x_opt, opt_sol[i::self.Nopt].T)
+            x_opt = cs.vertcat(x_opt, opt_sol_xu[i::self.Nxu].T)
         u_opt = []
         for i in range(self.dyn.Nx, self.Nxu):
-            u_opt = cs.vertcat(u_opt, opt_sol[i::self.Nopt].T)
+            u_opt = cs.vertcat(u_opt, opt_sol_xu[i::self.Nxu].T)
         other_opt = []
-        for i in range(self.Nxu, self.Nopt):
-            other_opt = cs.vertcat(other_opt, opt_sol[i::self.Nopt].T)
+        if self.dyn.Nz > 0:
+            for i in range(self.dyn.Nz):
+                other_opt = cs.vertcat(other_opt, opt_sol_s[i::self.dyn.Nz].T)
         # ---- warm start ----
-        for i in range(self.dyn.Nx, self.Nopt):
-            opt_sol[i::self.Nopt] = [0.0]*(self.TH-1)
+        # for i in range(0, self.dyn.Nx):
+        #     opt_sol[i::self.Nopt] = [0.0]*(self.TH)
+        for i in range(self.dyn.Nx, self.Nxu):
+            opt_sol[:(self.TH*self.Nxu-self.dyn.Nu)][i::self.Nxu] = [0.]*(self.TH-1)
+        opt_sol[(self.TH*self.Nxu-self.dyn.Nu):] = [0.]
         self.args.x0 = opt_sol.elements()
         # ---- add nominal trajectory ----
         if self.linDyn:
-            u_opt += self.U_nom_val[:, idx:(idx+self.TH-1)]
             x_opt += self.X_nom_val[:, idx:(idx+self.TH)]
+            u_opt += self.U_nom_val[:, idx:(idx+self.TH-1)]
 
         return resultFlag, x_opt, u_opt, other_opt, f_opt, t_opt

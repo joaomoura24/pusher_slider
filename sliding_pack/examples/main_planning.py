@@ -48,9 +48,10 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 # Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 X_goal = planning_config['TO']['X_goal']
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, 0)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, 0)
+print(X_goal)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.3, 0.4, N, 0)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, 0)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, 0)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
@@ -105,7 +106,6 @@ t_Nx = np.linspace(0, T, N)
 t_Nu = np.linspace(0, T, N-1)
 ctrl_g = dyn.g_u.map(N-1)
 ctrl_g_val = ctrl_g(U_nom_val_opt, other_opt)
-print(ctrl_g_val.shape)
 #  -------------------------------------------------------------------
 # plot position
 for i in range(dyn.Nx):
