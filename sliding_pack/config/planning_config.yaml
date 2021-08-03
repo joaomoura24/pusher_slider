@@ -3,18 +3,18 @@
 # 
 
 dynamics:
-    sideLenght: 0.09 #  [meter]
+    xLenght: 0.07
+    yLenght: 0.12
     pusherRadious: 0.01 #  [meter]
     pusherFricCoef: 0.2
     pusherForceLim:  0.3
-    pusherAngleLim: 0.5
     pusherAngleVelLim: 3.0
     Kz_max: 1.
     Kz_min: 1.
 
 TO:
     # contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
-    contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'

@@ -27,17 +27,19 @@ quad_np = lambda sq_side: integrate.quad(lambda var: var**2,
 # Fixed step Runge-Kutta 4 integrator
 M = 4  # RK4 steps per interval
 N = 4  # number of control intervals
-side_lenght = cs.SX.sym('side_lenght')
+sLenght = cs.SX.sym('sLenght')
+xLenght = cs.SX.sym('xLenght')
+yLenght = cs.SX.sym('yLenght')
 x = cs.SX.sym('x')
 y = cs.SX.sym('y')
-DX = side_lenght/(N*M)
-DY = side_lenght/(N*M)
+DX = xLenght/(N*M)
+DY = yLenght/(N*M)
 # -------------------------------------------------------------------
 # 1D casadi integration of g
 # cost function
 g = cs.Function('g_ext', [x], [DX, (x**2)*DX])
 Q = 0  # initialize cost
-xx = -side_lenght/2  # initialize initial cond
+xx = -xLenght/2  # initialize initial cond
 for n in range(N):
     for m in range(M):
         k1, k1_q = g(xx)
@@ -46,15 +48,15 @@ for n in range(N):
         k4, k4_q = g(xx + k3)
         Q += (k1_q + 2*k2_q + 2*k3_q + k4_q)/6
         xx += (k1 + 2*k2 + 2*k3 + k4)/6
-quad_cs = cs.Function('quad_cs', [side_lenght], [Q])
+quad_cs = cs.Function('quad_cs', [xLenght], [Q])
 # -------------------------------------------------------------------
 # 2D casadi integration of g
 g = cs.Function('h_ext', [x, y], [DX, DY, (cs.sqrt((x**2)+(y**2)))*DX*DY])
 Q = 0  # initialize cost
-yy = -side_lenght/2  # initialize initial cond
+yy = -yLenght/2  # initialize initial cond
 for ny in range(N):
     for my in range(M):
-        xx = -side_lenght/2
+        xx = -xLenght/2
         for nx in range(N):
             for mx in range(M):
                 k1_x, k1_y, k1_q = g(xx, yy)
@@ -64,4 +66,5 @@ for ny in range(N):
                 Q += (k1_q + 2*k2_q + 2*k3_q + k4_q)/6
                 xx += (k1_x + 2*k2_x + 2*k3_x + k4_x)/6
         yy += (k1_y + 2*k2_y + 2*k3_y + k4_y)/6
-square_cs = cs.Function('square_cs', [side_lenght], [Q])
+rect_cs = cs.Function('rect_cs', [xLenght, yLenght], [Q])
+square_cs = cs.Function('square_cs', [sLenght], [rect_cs(sLenght, sLenght)])

@@ -18,67 +18,24 @@ import matplotlib.transforms as transforms
 import casadi as cs
 import sliding_pack
 
-# -------------------------------------------------------------------
-# build dynamic fuction for quasi-static ellipsoidal limit surface
-# -------------------------------------------------------------------
-# x - state vector
-x_slider = cs.SX.sym('x_slider') # in global frame [m]
-y_slider = cs.SX.sym('y_slider') # in global frame [m]
-theta = cs.SX.sym('theta') # in global frame [rad]
-psi = cs.SX.sym('psi') # in relative frame [rad]
-x = cs.veccat(x_slider, y_slider, theta, psi)
-## u - control vector
-v_norm = cs.SX.sym('v_norm') # in local frame [m/s]
-v_tan = cs.SX.sym('v_tan') # in  local frame [m/s]
-psi_dot = cs.SX.sym('psi_dot') # rel vel between pusher and slider [rad/s]
-u = cs.veccat(v_norm, v_tan, psi_dot)
-# beta - dynamic parameters
-sl = cs.SX.sym('sl') # slider side lenght
-r_pusher = cs.SX.sym('r_pusher') # radious of the cilindrical pusher
-beta = cs.veccat(sl, r_pusher)
-## -------------------------------------------------------------------
-## Build Motion Model
-## -------------------------------------------------------------------
-## Rotation matrix
-Area = sl**2
-int_Area = sliding_pack.integral.square_cs(sl)
-c = int_Area/Area # ellipsoid approximation ratio
-A = cs.SX.sym('A', cs.Sparsity.diag(3))
-A[0,0] = A[1,1] = 1; A[2,2] = 1/(c**2);
-ctheta = cs.cos(theta); stheta = cs.sin(theta)
-R = cs.SX(3,3)
-R[0,0] = ctheta; R[0,1] = -stheta; R[1,0] = stheta; R[1,1] = ctheta; R[2,2] = 1.0;
-square_slider_quasi_static_ellipsoidal_limit_surface_R = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_R', [x], [R])
-#  -------------------------------------------------------------------
-## slider position
-xc = -sl/2; yc = -(sl/2)*cs.tan(psi)
-rc = cs.SX(2,1); rc[0] = xc-r_pusher; rc[1] = yc
-p_pusher = cs.mtimes(R[0:2,0:2], rc)[0:2] + x[0:2]
-square_slider_quasi_static_ellipsoidal_limit_surface_p = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_p', [x,beta], [p_pusher])
-#  -------------------------------------------------------------------
-## dynamics
-Jc = cs.SX(2,3)
-Jc[0,0] = 1; Jc[1,1] = 1; Jc[0,2] = -yc; Jc[1,2] = xc;
-f = cs.SX(cs.vertcat(cs.mtimes(cs.mtimes(R,A),cs.mtimes(Jc.T,u[0:2])),u[2]))
-square_slider_quasi_static_ellipsoidal_limit_surface_f = cs.Function('square_slider_quasi_static_ellipsoidal_limit_surface_f', [x,u,beta], [f])
-#  -------------------------------------------------------------------
-
 class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
     def __init__(self, configDict, contactMode='sticking'):
 
         # init parameters
         self.mode = contactMode
-        self.sl = configDict['sideLenght']  # side dimension of the square slider [m]
-        self.r_pusher = configDict['pusherRadious']  # radius of the cylindrical pusher [m]
-        self.miu = configDict['pusherFricCoef']  # friction between pusher and slider
+        # self.sl = configDict['sideLenght']  # side dimension of the square slider [m]
+        self.xl = configDict['xLenght']  # x dim of the slider [m]
+        self.yl = configDict['yLenght']  # y dim of the slider [m]
+        self.r_pusher = configDict['pusherRadious']  # radius of the pusher [m]
+        self.miu = configDict['pusherFricCoef']  # fric between pusher and slider
         self.f_lim = configDict['pusherForceLim']
         self.psi_dot_lim = configDict['pusherAngleVelLim']
-        self.psi_lim = configDict['pusherAngleLim']
+        self.psi_lim = 0.95*np.arctan2(self.xl, self.yl)
         self.Kz_max = configDict['Kz_max']
         self.Kz_min = configDict['Kz_min']
         # vector of physical parameters
-        self.beta = [self.sl, self.r_pusher]
+        self.beta = [self.xl, self.yl, self.r_pusher]
 
         # system constant variables
         self.Nx = 4  # number of state variables
@@ -105,20 +62,21 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __x = cs.veccat(__x_slider, __y_slider, __theta, __psi)
         # u - control vector
         __f_norm = cs.SX.sym('__f_norm')  # in local frame [N]
-        __f_norm = cs.SX.sym('__f_norm')  # in  local frame [N]
+        __f_tan = cs.SX.sym('__f_tan')  # in local frame [N]
         # rel vel between pusher and slider [rad/s]
         __psi_dot = cs.SX.sym('__psi_dot')
-        __u = cs.veccat(v_norm, __f_norm, __psi_dot)
+        __u = cs.veccat(__f_norm, __f_tan, __psi_dot)
         # beta - dynamic parameters
-        __sl = cs.SX.sym('__sl')  # slider side lenght
+        __xl = cs.SX.sym('__xl')  # slider x lenght
+        __yl = cs.SX.sym('__yl')  # slider y lenght
         __r_pusher = cs.SX.sym('__r_pusher')  # radious of the cilindrical pusher
-        __beta = cs.veccat(__sl, __r_pusher)
+        __beta = cs.veccat(__xl, __yl, __r_pusher)
 
         # system model
         # -------------------------------------------------------------------
         # Rotation matrix
-        __Area = __sl**2
-        __int_Area = sliding_pack.integral.square_cs(__sl)
+        __Area = __xl*__yl
+        __int_Area = sliding_pack.integral.rect_cs(__xl, __yl)
         __c = __int_Area/__Area # ellipsoid approximation ratio
         __A = cs.SX.sym('__A', cs.Sparsity.diag(3))
         __A[0,0] = __A[1,1] = 1.; __A[2,2] = 1./(__c**2);
@@ -130,13 +88,13 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         self.R = cs.Function('R', [__x], [__R], ['x'], ['R'])
         #  -------------------------------------------------------------------
         # slider position
-        __xc = -__sl/2; __yc = -(__sl/2)*cs.tan(__psi)
+        __xc = -__xl/2; __yc = -(__yl/2)*cs.tan(__psi)
         __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher; __rc[1] = __yc
         __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]
         #  -------------------------------------------------------------------
         __p = cs.SX.sym('p', 2) # slider position
         __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])
-        __psi_prov = -cs.atan2(__rc_prov[1], __sl/2)
+        __psi_prov = -cs.atan2(__rc_prov[1], __xl/2)
         self.psi_ = cs.Function('psi_', [__x,__p,__beta], [__psi_prov])
         self.psi = cs.Function('psi', [self.x,__p], [self.psi_(self.x, __p, self.beta)])
         #  -------------------------------------------------------------------
@@ -309,9 +267,9 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
     def set_patches(self, ax, x_data):
         x0 = x_data[:, 0]
-        d0 = np.array(cs.mtimes(self.R(x0), [-self.sl/2, -self.sl/2, 0]).T)[0]
+        d0 = np.array(cs.mtimes(self.R(x0), [-self.xl/2, -self.yl/2, 0]).T)[0]
         self.slider = patches.Rectangle(
-                x0[0:2]+d0[0:2], self.sl, self.sl, x0[2])
+                x0[0:2]+d0[0:2], self.xl, self.yl, x0[2])
         self.pusher = patches.Circle(
                 np.array(self.p(x0)), radius=self.r_pusher, color='black')
         self.path_past, = ax.plot(x0[0], x0[1], color='orange')
@@ -324,7 +282,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
     def animate(self, i, ax, x_data, X_future=None):
         xi = x_data[:, i]
         # distance between centre of square reference corner
-        di = np.array(cs.mtimes(self.R(xi), [-self.sl/2, -self.sl/2, 0]).T)[0]
+        di = np.array(cs.mtimes(self.R(xi), [-self.xl/2, -self.yl/2, 0]).T)[0]
         # square reference corner
         ci = xi[0:3] + di
         # compute transformation with respect to rotation angle xi[2]
