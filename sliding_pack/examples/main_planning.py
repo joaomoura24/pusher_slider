@@ -27,7 +27,7 @@ with open('../config/planning_config.yaml', 'r') as configFile:
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 4  # time of the simulation is seconds
+T = 5  # time of the simulation is seconds
 freq = 25  # number of increments per second
 show_anim = True
 #  -------------------------------------------------------------------
@@ -48,7 +48,7 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 # Generate Nominal Trajectory
 #  -------------------------------------------------------------------
 X_goal = planning_config['TO']['X_goal']
-print(X_goal)
+# print(X_goal)
 x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.3, 0.4, N, 0)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, 0)
@@ -58,12 +58,19 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 
+# Set obstacles
+#  ------------------------------------------------------------------
+obsCentre = [[0.2, 0.2], [0., 0.4]]
+obsRadius = [0.05, 0.05]
+#  ------------------------------------------------------------------
+
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
         dyn, N, planning_config['TO'], X_nom_val, dt=dt)
 resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProblem(
-        0, X_nom_val[:, 0].elements())
+        0, X_nom_val[:, 0].elements(),
+        obsCentre=obsCentre, obsRadius=obsRadius)
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
 f_rollout = f_d.mapaccum(N-1)
 print('comp time: ', t_opt)
@@ -80,6 +87,10 @@ if show_anim:
     X_nom_val_opt = np.array(X_nom_val_opt)
     ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
             linewidth=2.0, linestyle='dashed')
+    # add obstacles
+    for i in range(len(obsCentre)):
+        circle_i = plt.Circle(obsCentre[i], obsRadius[i], color='b')
+        ax.add_patch(circle_i)
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches

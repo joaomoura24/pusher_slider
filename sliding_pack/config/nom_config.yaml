@@ -1,6 +1,16 @@
 #
 # Configuration file for tracking using sliding
 # 
+dynamics:
+    xLenght: 0.09 #  [meter]
+    yLenght: 0.12 #  [meter]
+    pusherRadious: 0.01 #  [meter]
+    pusherFricCoef: 0.3
+    pusherForceLim:  0.3
+    pusherAngleVelLim: 2.0
+    Kz_max: 50
+    Kz_min: 0.1
+
 
 TO:
     contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
@@ -14,3 +24,4 @@ TO:
     codeGenFlag: False
     noPrintingFlag: True
     phases: null
+    numObs: 0

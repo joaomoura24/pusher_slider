@@ -30,9 +30,9 @@ with open('../config/nom_config.yaml', 'r') as configFile:
 # Set Problem constants
 #  -------------------------------------------------------------------
 T = 20  # time of the simulation is seconds
-freq = 25  # number of increments per second
+freq = 50  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
-N_MPC = 20  # time horizon for the MPC controller
+N_MPC = 15  # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 show_anim = True
 #  -------------------------------------------------------------------
@@ -60,6 +60,15 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+#  ------------------------------------------------------------------
+
+
+# for testing sim with different dynamics
+#  ------------------------------------------------------------------
+dynSim = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
+        planning_config['dynamics'],
+        tracking_config['TO']['contactMode']
+)
 #  ------------------------------------------------------------------
 
 # Compute nominal actions for sticking contact
@@ -114,7 +123,7 @@ for idx in range(Nidx-1):
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
-    x0 = (x0 + dyn.f(x0, u0)*dt).elements()
+    x0 = (x0 + dynSim.f(x0, u0)*dt).elements()
     # ---- store values for plotting ----
     comp_time[idx] = t_opt
     success[idx] = resultFlag

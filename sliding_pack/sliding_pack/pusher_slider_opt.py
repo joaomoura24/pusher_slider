@@ -29,6 +29,7 @@ class buildOptObj():
         self.W_u = cs.diag(cs.SX(configDict['W_u']))[:self.dyn.Nu,
                                                      :self.dyn.Nu]
         self.K_goal = configDict['K_goal']
+        self.numObs = configDict['numObs']
         self.X_nom_val = X_nom_val
         self.U_nom_val = U_nom_val
         self.X_goal = configDict['X_goal']
@@ -218,12 +219,26 @@ class buildOptObj():
                 self.args.lbg += self.dyn.lbu
                 self.args.ubg += self.dyn.ubu
 
+        # ---- Add constraints for obstacle avoidance ----
+        if self.numObs > 0:
+            obsC = cs.SX.sym('obsC', 2, self.numObs)
+            obsR = cs.SX.sym('obsR', self.numObs)
+            for i_obs in range(self.numObs):
+                for i_th in range(self.TH-1):
+                    self.opt.g += (cs.norm_2(self.dyn.s(self.X[:, i_th+1])[:2]-obsC[:, i_obs])**2 - (obsR[i_obs]+self.dyn.Radius)**2).elements()
+                    self.args.lbg += [0.]
+                    self.args.ubg += [cs.inf]
+
         # ---- Set optimization parameters ----
         self.opt.p = []
         self.opt.p += self.x0.elements()
         self.opt.p += self.X_nom.elements()
         if self.linDyn:
             self.opt.p += self.U_nom.elements()
+        if self.numObs > 0:
+            for i_obs in range(self.numObs):
+                self.opt.p += obsC[:, i_obs].elements()
+                self.opt.p += obsR[i_obs].elements()
 
         # ---- optimization cost ----
         if self.X_goal is None:
@@ -278,13 +293,23 @@ class buildOptObj():
         #  -------------------------------------------------------------------
 
     def solveProblem(self, idx, x0,
-                     x_warmStart=None, u_warmStart=None):
+                     x_warmStart=None, u_warmStart=None,
+                     obsCentre=None, obsRadius=None):
+        if self.numObs > 0:
+            if self.numObs != len(obsCentre) or self.numObs != len(obsRadius):
+                print("Number of obstacles does not match the config file!", file=sys.stderr)
+                sys.exit()
         # ---- setting parameters ---- 
         p_ = []  # set to empty before reinitialize
         p_ += x0
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
         if self.linDyn:
             p_ += self.U_nom_val[:, idx:(idx+self.TH-1)].elements()
+        if self.numObs > 0:
+            for i_obs in range(self.numObs):
+                p_.append(obsCentre[i_obs][0])
+                p_.append(obsCentre[i_obs][1])
+                p_.append(obsRadius[i_obs])
         # ---- Solve the optimization ----
         if x_warmStart is not None:
             for i in range(self.dyn.Nx):

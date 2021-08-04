@@ -27,6 +27,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # self.sl = configDict['sideLenght']  # side dimension of the square slider [m]
         self.xl = configDict['xLenght']  # x dim of the slider [m]
         self.yl = configDict['yLenght']  # y dim of the slider [m]
+        self.Radius = np.sqrt((self.xl/2.)**2 + (self.yl/2.)**2)
         self.r_pusher = configDict['pusherRadious']  # radius of the pusher [m]
         self.miu = configDict['pusherFricCoef']  # fric between pusher and slider
         self.f_lim = configDict['pusherForceLim']
