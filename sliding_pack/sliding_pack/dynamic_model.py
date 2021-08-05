@@ -32,7 +32,10 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         self.miu = configDict['pusherFricCoef']  # fric between pusher and slider
         self.f_lim = configDict['pusherForceLim']
         self.psi_dot_lim = configDict['pusherAngleVelLim']
-        self.psi_lim = 0.95*np.arctan2(self.xl, self.yl)
+        self.psi_lim = 0.8*np.arctan2(self.yl, self.xl)
+        print('****************************************')
+        print(np.rad2deg(self.psi_lim))
+        print('****************************************')
         self.Kz_max = configDict['Kz_max']
         self.Kz_min = configDict['Kz_min']
         # vector of physical parameters
@@ -89,7 +92,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         self.R = cs.Function('R', [__x], [__R], ['x'], ['R'])
         #  -------------------------------------------------------------------
         # slider position
-        __xc = -__xl/2; __yc = -(__yl/2)*cs.tan(__psi)
+        __xc = -__xl/2; __yc = -(__xl/2)*cs.tan(__psi)
         __rc = cs.SX(2,1); __rc[0] = __xc-__r_pusher; __rc[1] = __yc
         __p_pusher = cs.mtimes(__R[0:2,0:2], __rc)[0:2] + __x[0:2]
         #  -------------------------------------------------------------------
