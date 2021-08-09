@@ -229,25 +229,34 @@ class buildOptObj():
                     self.args.lbg += [0.]
                     self.args.ubg += [cs.inf]
 
+        # ---- optimization cost ----
+        if self.X_goal is None:
+            self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
+            self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.U[:, -1])
+        else:
+            self.S_goal = cs.SX.sym('s', self.TH-1)
+            # print('*****************')
+            # print(self.X.shape)
+            # print(self.X[:, :-1].shape)
+            # print(self.TH-1)
+            # print(self.S_goal.shape)
+            # sys.exit()
+            self.opt.f = self.cost_f(cs.mtimes(self.X[:, :-1], self.S_goal) - self.X_goal, self.U[:, -1])
+        for i in range(self.dyn.Nz):
+            self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
+
         # ---- Set optimization parameters ----
         self.opt.p = []
         self.opt.p += self.x0.elements()
         self.opt.p += self.X_nom.elements()
+        if self.X_goal is not None:
+            self.opt.p += self.S_goal.elements()
         if self.linDyn:
             self.opt.p += self.U_nom.elements()
         if self.numObs > 0:
             for i_obs in range(self.numObs):
                 self.opt.p += obsC[:, i_obs].elements()
                 self.opt.p += obsR[i_obs].elements()
-
-        # ---- optimization cost ----
-        if self.X_goal is None:
-            self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
-            self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.U[:, -1])
-        else:
-            self.opt.f = self.cost_f(self.X[:, -1] - self.X_goal, self.U[:, -1])
-        for i in range(self.dyn.Nz):
-            self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
 
         # Set up QP Optimization Problem
         #  -------------------------------------------------------------------
@@ -294,7 +303,7 @@ class buildOptObj():
 
     def solveProblem(self, idx, x0,
                      x_warmStart=None, u_warmStart=None,
-                     obsCentre=None, obsRadius=None):
+                     obsCentre=None, obsRadius=None, S_goal_val=None):
         if self.numObs > 0:
             if self.numObs != len(obsCentre) or self.numObs != len(obsRadius):
                 print("Number of obstacles does not match the config file!", file=sys.stderr)
@@ -303,6 +312,12 @@ class buildOptObj():
         p_ = []  # set to empty before reinitialize
         p_ += x0
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
+        if self.X_goal is not None:
+            if S_goal_val is None:
+                p_ += [0.]*(self.TH-2)
+                p_ += [1.]
+            else:
+                p_ += S_goal_val
         if self.linDyn:
             p_ += self.U_nom_val[:, idx:(idx+self.TH-1)].elements()
         if self.numObs > 0:

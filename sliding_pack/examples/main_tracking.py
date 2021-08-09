@@ -107,6 +107,16 @@ success = np.empty(Nidx-1)
 cost_plot = np.empty(Nidx-1)
 #  -------------------------------------------------------------------
 
+#  Set selection matrix for X_goal
+#  -------------------------------------------------------------------
+if X_goal is None:
+    S_goal_val = None
+else:
+    S_goal_idx = N_MPC-2
+    S_goal_val = [0]*(N_MPC-1)
+    S_goal_val[S_goal_idx] = 1
+#  -------------------------------------------------------------------
+
 # Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
@@ -114,7 +124,9 @@ for idx in range(Nidx-1):
     print('-------------------------')
     print(idx)
     # ---- solve problem ----
-    resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0)
+    resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0,
+            S_goal_val=S_goal_val)
+    print(f_opt)
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
@@ -128,6 +140,13 @@ for idx in range(Nidx-1):
     X_future[:, :, idx] = np.array(x_opt)
     if dyn.Nz > 0:
         del_plot[:, idx] = del_opt[:, 0].elements()
+    # ---- update selection matrix ----
+    if X_goal is not None and f_opt < 0.00001 and S_goal_idx > 10:
+        S_goal_idx -= 1
+        S_goal_val = [0]*(N_MPC-1)
+        S_goal_val[S_goal_idx] = 1
+        print(S_goal_val)
+        # sys.exit()
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
