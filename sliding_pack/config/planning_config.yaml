@@ -26,7 +26,6 @@ TO:
     X_goal: [0.3, 0.4, 4.71, 0.]
     numObs: 2
     # X_goal: null
-    avoidObsFlag: False
     linDynFlag: False
     codeGenFlag: False
     noPrintingFlag: False

@@ -30,9 +30,9 @@ with open('../config/nom_config.yaml', 'r') as configFile:
 # Set Problem constants
 #  -------------------------------------------------------------------
 T = 4  # time of the simulation is seconds
-freq = 50  # number of increments per second
+freq = 25  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
-N_MPC = 25  # time horizon for the MPC controller
+N_MPC = 15  # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 show_anim = True
 #  -------------------------------------------------------------------
@@ -56,9 +56,9 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 #  -------------------------------------------------------------------
 X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
@@ -117,6 +117,13 @@ else:
     S_goal_val[S_goal_idx] = 1
 #  -------------------------------------------------------------------
 
+# Set obstacles
+#  ------------------------------------------------------------------
+obsCentre = [[0., 0.28]]
+# obsCentre = [[0.2, 0.2]]
+obsRadius = [0.05]
+#  ------------------------------------------------------------------
+
 # Set arguments and solve
 #  -------------------------------------------------------------------
 x0 = x_init_val
@@ -124,8 +131,9 @@ for idx in range(Nidx-1):
     print('-------------------------')
     print(idx)
     # ---- solve problem ----
-    resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(idx, x0,
-            S_goal_val=S_goal_val)
+    resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
+            idx, x0, S_goal_val=S_goal_val,
+            obsCentre=obsCentre, obsRadius=obsRadius)
     print(f_opt)
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
@@ -166,6 +174,10 @@ if show_anim:
     X_nom_comp = np.array(X_nom_comp)
     ax.plot(X_nom_comp[0, :], X_nom_comp[1, :], color='green',
             linewidth=2.0, linestyle='dashed')
+    # add obstacles
+    for i in range(len(obsCentre)):
+        circle_i = plt.Circle(obsCentre[i], obsRadius[i], color='b')
+        ax.add_patch(circle_i)
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches

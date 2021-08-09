@@ -268,6 +268,9 @@ class buildOptObj():
             opts_dict['ipopt.jac_d_constant'] = 'yes'
             opts_dict['ipopt.warm_start_init_point'] = 'yes'
             opts_dict['ipopt.hessian_constant'] = 'yes'
+        if self.solver_name == 'knitro':
+            opts_dict['knitro'] = {}
+            if self.no_printing: opts_dict['knitro'] = {'mip_outlevel': 0}
         if self.solver_name == 'snopt':
             opts_dict['snopt'] = {}
             if self.no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}

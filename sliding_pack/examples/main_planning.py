@@ -106,7 +106,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    # ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
