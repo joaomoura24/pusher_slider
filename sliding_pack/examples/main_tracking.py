@@ -12,6 +12,7 @@
 import sys
 import yaml
 import numpy as np
+import pandas as pd
 import casadi as cs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -35,6 +36,7 @@ freq = 25  # number of increments per second
 N_MPC = 15  # time horizon for the MPC controller
 x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 show_anim = True
+save_to_file = False
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
@@ -102,9 +104,9 @@ U_plot = np.empty([dyn.Nu, Nidx-1])
 del_plot = np.empty([dyn.Nz, Nidx-1])
 X_plot[:, 0] = x_init_val
 X_future = np.empty([dyn.Nx, N_MPC, Nidx])
-comp_time = np.empty(Nidx-1)
+comp_time = np.empty((Nidx-1, 1))
 success = np.empty(Nidx-1)
-cost_plot = np.empty(Nidx-1)
+cost_plot = np.empty((Nidx-1, 1))
 #  -------------------------------------------------------------------
 
 #  Set selection matrix for X_goal
@@ -159,6 +161,30 @@ for idx in range(Nidx-1):
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
 #  -------------------------------------------------------------------
+
+if save_to_file:
+    #  Save data to file using pandas
+    #  -------------------------------------------------------------------
+    df_state = pd.DataFrame(
+                    np.concatenate((
+                        np.array(X_nom_val[:, :Nidx]).transpose(),
+                        np.array(X_plot).transpose()
+                        ), axis=1),
+                    columns=['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
+                             'x_opt', 'y_opt', 'theta_opt', 'psi_opt'])
+    df_state.to_csv('tracking_with_obstacles_state.csv',
+                    float_format='%.5f')
+    df_action = pd.DataFrame(
+                    np.concatenate((
+                        U_plot.transpose(),
+                        cost_plot,
+                        comp_time
+                        ), axis=1),
+                    columns=['u0', 'u1', 'u3', 'u3',
+                             'cost', 'comp_time'])
+    df_action.to_csv('tracking_with_obstacles_action.csv',
+                     float_format='%.5f')
+    #  -------------------------------------------------------------------
 
 # Animation
 #  -------------------------------------------------------------------

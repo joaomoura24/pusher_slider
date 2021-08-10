@@ -12,6 +12,7 @@
 import sys
 import yaml
 import numpy as np
+import pandas as pd
 import casadi as cs
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -30,6 +31,7 @@ with open('../config/planning_config.yaml', 'r') as configFile:
 T = 5  # time of the simulation is seconds
 freq = 25  # number of increments per second
 show_anim = True
+save_to_file = False
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
@@ -75,6 +77,21 @@ f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
 f_rollout = f_d.mapaccum(N-1)
 print('comp time: ', t_opt)
 #  ------------------------------------------------------------------
+
+if save_to_file:
+    #  Save data to file using pandas
+    #  -------------------------------------------------------------------
+    df_state = pd.DataFrame(
+                    np.array(X_nom_val_opt).transpose(),
+                    columns=['x_opt', 'y_opt', 'theta_opt', 'psi_opt'])
+    df_state.to_csv('planning_with_obstacles_state.csv',
+                    float_format='%.5f')
+    df_action = pd.DataFrame(
+                    np.array(U_nom_val_opt).transpose(),
+                    columns=['u0', 'u1', 'u3', 'u3'])
+    df_action.to_csv('planning_with_obstacles_action.csv',
+                     float_format='%.5f')
+    #  -------------------------------------------------------------------
 
 # Animation
 #  -------------------------------------------------------------------
