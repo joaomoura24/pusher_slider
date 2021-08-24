@@ -1,3 +1,10 @@
+# package info
+__author__ = "Joao Moura"
+__copyright__ = "Copyright 2021, Joao Moura"
+
+__license__ = "Apache v2.0"
+__version__ = "0.0.1"
+
 # ----------------------------------------------------------------
 # import from utils folder
 # ----------------------------------------------------------------
