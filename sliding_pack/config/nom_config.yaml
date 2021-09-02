@@ -17,8 +17,8 @@ TO:
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', or 'sliding_mi'
     solverName: 'gurobi'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     W_x: [1.0, 1.0, 0.01, 0.]  # diagonal state weights
-    W_u: [0.1, 0.1, 0., 0.]  # diagonal control weights
-    K_goal: 100
+    W_u: [0., 0., 0., 0.]  # diagonal control weights
+    K_goal: 10
     X_goal: null
     linDynFlag: False
     codeGenFlag: False

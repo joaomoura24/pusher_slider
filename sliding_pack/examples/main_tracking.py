@@ -60,7 +60,8 @@ X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
@@ -121,9 +122,14 @@ else:
 
 # Set obstacles
 #  ------------------------------------------------------------------
-obsCentre = [[0., 0.28]]
-# obsCentre = [[0.2, 0.2]]
-obsRadius = [0.05]
+if optObj.numObs==0:
+    obsCentre = None
+    obsRadius = None
+elif optObj.numObs==1:
+    obsCentre = [[-0.27, 0.1]]
+    # obsCentre = [[0., 0.28]]
+    # obsCentre = [[0.2, 0.2]]
+    obsRadius = [0.05]
 #  ------------------------------------------------------------------
 
 # Set arguments and solve
@@ -194,16 +200,17 @@ if show_anim:
     fig, ax = sliding_pack.plots.plot_nominal_traj(
                 x0_nom[:Nidx], x1_nom[:Nidx])
     # add computed nominal trajectory
-    # X_nom_val_opt = np.array(X_nom_val_opt)
-    # ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
-    #         linewidth=2.0, linestyle='dashed')
+    X_nom_val_opt = np.array(X_nom_val_opt)
+    ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
+            linewidth=2.0, linestyle='dashed')
     X_nom_comp = np.array(X_nom_comp)
     ax.plot(X_nom_comp[0, :], X_nom_comp[1, :], color='green',
             linewidth=2.0, linestyle='dashed')
     # add obstacles
-    for i in range(len(obsCentre)):
-        circle_i = plt.Circle(obsCentre[i], obsRadius[i], color='b')
-        ax.add_patch(circle_i)
+    if optObj.numObs > 0:
+        for i in range(len(obsCentre)):
+            circle_i = plt.Circle(obsCentre[i], obsRadius[i], color='b')
+            ax.add_patch(circle_i)
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
