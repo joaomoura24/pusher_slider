@@ -11,3 +11,4 @@ tikz_schematics/*
 *.so
 data/
 __pycache__
+*~  # ignore Chris' annoying Emacs backups
