@@ -1,6 +1,8 @@
+import os
 import numpy
 import pandas
 import pygame
+import time
 import pygame_teleop  # https://github.com/cmower/pygame_teleop
 from numpy import sign
 from scipy.spatial.transform import Rotation
@@ -302,7 +304,11 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    pandas.DataFrame(data).to_csv('data.csv')
+    if not os.path.exists('data'):
+        os.mkdir('data')
+    stamp = time.time_ns()
+    fn = os.path.join('data', 'data_%d.csv'%stamp)
+    pandas.DataFrame(data).to_csv(fn)
 
     pygame.quit()
     print("Goodbye")
