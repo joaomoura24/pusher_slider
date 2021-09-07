@@ -1,4 +1,5 @@
 import numpy
+import pandas
 import pygame
 import pygame_teleop  # https://github.com/cmower/pygame_teleop
 from numpy import sign
@@ -23,6 +24,8 @@ m = 1.0  # mass of object in kg
 g = 9.807  # gravitational acceleration
 slider_width = 0.3  # width of slider - along x axis
 slider_height = 0.2  # height of slider - along y axis
+Nx = 4  # state dimension
+Nu = 3  # control dimension
 
 # Compute constants
 A = slider_width*slider_height  # area of slider
@@ -200,14 +203,32 @@ def main():
     pusher = numpy.array([0.25*slider_width, slider.bottom])
     pusher_angle = numpy.arctan2(pusher[1], pusher[0])
     side = 'bottom'
-    fmax = 1.5
+    fmax = 1.5  # max force
+    data_col_names = ['t']
+    data_col_names += ['x%d'%i for i in range(Nx)]
+    data_col_names += ['u%d'%i for i in range(Nu)]
+    data = {col: [] for col in data_col_names}
     max_avel = numpy.deg2rad(10)
+    goal_position = numpy.array([0.75, 0.75])
+    goal_tol = 0.1
     try:
         joy = Joystick()
         use_joy = True
     except pygame.error:
         use_joy = False
         j = [0.0, 0.0, 0.0, 0.0]
+    curr_time = pygame.time.get_ticks()
+    x = numpy.array([slider.pos[0], slider.pos[1], slider.heading, pusher_angle])
+    data['t'].append(curr_time)
+    for i in range(Nx):
+        data['x%d'%i].append(x[i])
+    for i in range(Nu):
+        data['u%d'%i].append(0.0)
+    screen.windows['robotenv'].static_circle(
+        'green',
+        screen.windows['robotenv'].convert_position(goal_position),
+        screen.windows['robotenv'].convert_scalar(goal_tol),
+    )
     running = True
 
     # Main loop
@@ -237,11 +258,15 @@ def main():
                     elif (event.key == pygame.K_z) or (event.key == pygame.K_x):
                         j[0] = 0.0
 
+            if numpy.linalg.norm(goal_position - x[:2]) < goal_tol:
+                running = False
+
             if use_joy:
                 joy.reset()
                 j = joy.get_axes()
 
-            # Update pusher/slider state
+            # Setup
+            curr_time = float(pygame.time.get_ticks())*0.001
             old_pusher = pusher.copy()
             pusher[0] += j[3]*max_avel*dt
             pusher[0] = numpy.clip(pusher[0], -0.5*slider_width, 0.5*slider_width)
@@ -252,6 +277,15 @@ def main():
             fnc = -fmax*numpy.clip(j[1], -1, 0)
             ftc = numpy.clip(-fmax*j[0], -mu_g*fnc, mu_g*fnc)
             u = numpy.array([fnc, ftc, angle_vel])
+
+            # Log data
+            data['t'].append(curr_time)
+            for i in range(Nx):
+                data['x%d'%i].append(x[i])
+            for i in range(Nu):
+                data['u%d'%i].append(u[i])
+
+            # Update pusher/slider states
             x += dt*xdot(x, u, pusher, side)
             slider.update(x[:2], x[2])
             R = Rotation.from_euler('z', slider.heading, degrees=False).as_matrix()[:2,:2]
@@ -267,6 +301,8 @@ def main():
 
     except KeyboardInterrupt:
         pass
+
+    pandas.DataFrame(data).to_csv('data.csv')
 
     pygame.quit()
     print("Goodbye")
