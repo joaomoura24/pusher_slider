@@ -1,0 +1,33 @@
+#
+# Configuration file for planning/teleop using sliding
+#
+
+dynamics:
+    xLenght: 0.3
+    yLenght: 0.2
+    pusherRadious: 0.01 #  [meter]
+    pusherFricCoef: 0.2
+    pusherForceLim:  1.5
+    pusherAngleVelLim: 3.0
+    Kz_max: 1.
+    Kz_min: 1.
+
+TO:
+    # contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
+    contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    # contactMode: 'sliding_mi'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
+    solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    # solverName: 'snopt'
+    # solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    # solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
+    W_x: [1.0, 1.0, 0.01, 0.]  # diagonal state weights
+    W_u: [0.05, 0.05, 0., 0.]  # diagonal control weights
+    K_goal: 100
+    X_goal: [0.75, 0.75, 0, 0.]
+    numObs: 1
+    # X_goal: null
+    linDynFlag: False
+    codeGenFlag: False
+    noPrintingFlag: False
+    phases: null
