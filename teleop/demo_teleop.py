@@ -217,9 +217,9 @@ def main():
                 'height': 1000-20,
                 'background_color': 'white',
                 'type': 'RobotEnvironment',
-                'robotenv_width': 1.0,
-                'robotenv_height': 1.0,
-                'robotenv_origin_location': 'lower_left',
+                'robotenv_width': 4.0,
+                'robotenv_height': 4.0,
+                'robotenv_origin_location': 'center',
                 'show_origin': True,
                 'robots': {
                     'robot1': {
