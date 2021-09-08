@@ -1,5 +1,13 @@
 # teleop
 
+## Requirements
+
+- pygame
+- [pygame_teleop](https://github.com/cmower/pygame_teleop)
+- scipy
+- numpy
+- pandas
+
 ## Data
 
 For each trial, two data files are saved.
