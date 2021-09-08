@@ -1,8 +1,10 @@
 import os
 import numpy
 import pandas
+import pickle
 import pygame
 import time
+import subprocess
 import pygame_teleop  # https://github.com/cmower/pygame_teleop
 from numpy import sign
 from scipy.spatial.transform import Rotation
@@ -165,7 +167,7 @@ class Slider:
 def main():
 
     # Setup
-    config = {
+    screen_config = {
         'caption': 'Pushing teleop',
         'width': 1000,
         'height': 1000,
@@ -197,7 +199,7 @@ def main():
             }
         }
     }
-    screen = Screen(config)
+    screen = Screen(screen_config)
     clock = pygame.time.Clock()
     draw_colors = ['red', 'green', 'blue']
     draw_color = None
@@ -209,8 +211,9 @@ def main():
     data_col_names = ['t']
     data_col_names += ['x%d'%i for i in range(Nx)]
     data_col_names += ['u%d'%i for i in range(Nu)]
+    data_col_names.append('side')
     data = {col: [] for col in data_col_names}
-    max_avel = numpy.deg2rad(10)
+    max_pusher_vel = numpy.deg2rad(10)
     goal_position = numpy.array([0.75, 0.75])
     goal_tol = 0.1
     try:
@@ -226,10 +229,27 @@ def main():
         data['x%d'%i].append(x[i])
     for i in range(Nu):
         data['u%d'%i].append(0.0)
+    data['side'].append(side)
     screen.windows['robotenv'].static_circle(
         'green',
         screen.windows['robotenv'].convert_position(goal_position),
         screen.windows['robotenv'].convert_scalar(goal_tol),
+    )
+    config = dict(
+        hz=hz,
+        mu_g=mu_g,
+        m=m,
+        slider_width=slider_width,
+        slider_height=slider_height,
+        Nx=Nx,
+        Nu=Nu,
+        fmax=fmax,
+        use_joy=use_joy,
+        goal_position=goal_position,
+        goal_tol=goal_tol,
+        screen_config=screen_config,
+        max_pusher_vel=max_pusher_vel,
+        git_commit_at=subprocess.check_output(['git', 'describe', '--always']).strip().decode('utf-8'),
     )
     running = True
 
@@ -270,7 +290,7 @@ def main():
             # Setup
             curr_time = time.time()
             old_pusher = pusher.copy()
-            pusher[0] += j[3]*max_avel*dt
+            pusher[0] += j[3]*max_pusher_vel*dt
             pusher[0] = numpy.clip(pusher[0], -0.5*slider_width, 0.5*slider_width)
             new_pusher_angle = numpy.arctan2(pusher[1], pusher[0])
             angle_vel = (new_pusher_angle - pusher_angle)/dt
@@ -286,6 +306,7 @@ def main():
                 data['x%d'%i].append(x[i])
             for i in range(Nu):
                 data['u%d'%i].append(u[i])
+            data['side'].append(side)
 
             # Update pusher/slider states
             x += dt*xdot(x, u, pusher, side)
@@ -300,15 +321,22 @@ def main():
             screen.final()
             clock.tick_busy_loop(hz)
 
-
     except KeyboardInterrupt:
         pass
 
+    # Make data directory when needed
     if not os.path.exists('data'):
         os.mkdir('data')
+
+    # Save time-series data
     stamp = time.time_ns()
     fn = os.path.join('data', 'data_%d.csv'%stamp)
     pandas.DataFrame(data).to_csv(fn)
+
+    # Save configuration data
+    fn = os.path.join('data', 'config_%d.config'%stamp)
+    with open(fn, 'wb') as f:
+        pickle.dump(config, f)
 
     pygame.quit()
     print("Goodbye")
