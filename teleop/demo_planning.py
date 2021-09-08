@@ -54,8 +54,8 @@ def load_data(fn):
     xx = xfun(tt)
     return xx[0,:].flatten(), xx[1,:].flatten()
 
-# x0_nom, x1_nom = load_data('data_1631104304830586074.csv')  # use human input
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0)
+x0_nom, x1_nom = load_data('data_log0.csv')  # use human input
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.3, 0.4, N, 0)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, 0)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, 0)
