@@ -192,8 +192,14 @@ def main():
                     'pusher': {
                         'show_path': False,
                         'robot_radius': 0.01,
-                        'robot_color': 'blue'
+                        'robot_color': 'blue',
                     },
+                    'slider': {
+                        'show_path': True,
+                        'robot_radius': 0.01,
+                        'robot_color': 'black',
+                        'path_width': 3,
+                    }
                 }
 
             }
@@ -316,8 +322,9 @@ def main():
 
             # Draw
             screen.reset()
-            screen.windows['robotenv'].draw_box('red', slider.width, slider.height, slider.pos, slider.heading)
+            screen.windows['robotenv'].draw_box('red', slider.width, slider.height, slider.pos, slider.heading, alpha=100)
             screen.windows['robotenv'].robots['pusher'].draw(pusher_in_world)
+            screen.windows['robotenv'].robots['slider'].draw(slider.pos)
             screen.final()
             clock.tick_busy_loop(hz)
 
