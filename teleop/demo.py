@@ -219,7 +219,7 @@ def main():
     except pygame.error:
         use_joy = False
         j = [0.0, 0.0, 0.0, 0.0]
-    curr_time = pygame.time.get_ticks()
+    curr_time = time.time()
     x = numpy.array([slider.pos[0], slider.pos[1], slider.heading, pusher_angle])
     data['t'].append(curr_time)
     for i in range(Nx):
@@ -268,7 +268,7 @@ def main():
                 j = joy.get_axes()
 
             # Setup
-            curr_time = float(pygame.time.get_ticks())*0.001
+            curr_time = time.time()
             old_pusher = pusher.copy()
             pusher[0] += j[3]*max_avel*dt
             pusher[0] = numpy.clip(pusher[0], -0.5*slider_width, 0.5*slider_width)
