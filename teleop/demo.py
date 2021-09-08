@@ -21,8 +21,8 @@ numpy.set_printoptions(precision=2, suppress=True)
 hz = 80
 dt = 1.0/float(hz)
 pi = numpy.pi
-mu_g = 0.5  # coefficient of friction between the object and the ground
-m = 1.0  # mass of object in kg
+mu_g = 0.5  # coefficient of friction between the slider and the ground
+m = 1.0  # mass of slider in kg
 g = 9.807  # gravitational acceleration
 slider_width = 0.3  # width of slider - along x axis
 slider_height = 0.2  # height of slider - along y axis
@@ -46,14 +46,14 @@ side2vec = dict(
 def xdot(x, u, r, side):
 
     # Extract state elements
-    px = x[0]  # x position of object in world frame
-    py = x[1]  # y position of object in world frame
-    th = x[2]  # heading of object in world frame
-    ph = x[3]  # angle of pusher relative to object frame
+    px = x[0]  # x position of slider in world frame
+    py = x[1]  # y position of slider in world frame
+    th = x[2]  # heading of slider in world frame
+    ph = x[3]  # angle of pusher relative to slider frame
 
     # Extract pusher elements
-    xc = r[0]  # x position of pusher in object frame
-    yc = r[1]  # y position of pusher in object frame
+    xc = r[0]  # x position of pusher in slider frame
+    yc = r[1]  # y position of pusher in slider frame
 
     # Compute dynamics
     R = Rotation.from_euler('z', th).as_matrix()  # 3-by-3
