@@ -334,7 +334,7 @@ def main():
     pandas.DataFrame(data).to_csv(fn)
 
     # Save configuration data
-    fn = os.path.join('data', 'config_%d.config'%stamp)
+    fn = os.path.join('data', 'data_%d.config'%stamp)
     with open(fn, 'wb') as f:
         pickle.dump(config, f)
 
