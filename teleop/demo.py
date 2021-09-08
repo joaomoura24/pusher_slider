@@ -172,6 +172,9 @@ class Slider:
         self.pos = pos
         self.heading = heading
 
+    def get_corner_position(self):
+        return numpy.array([self.left, self.bottom])  # position in local frame
+
     def near_point(self, point):
         p = point.pos_in_slider_frame()
         x = numpy.clip(p[0], self.left, self.right)
@@ -244,7 +247,7 @@ def main():
     clock = pygame.time.Clock()
     draw_colors = ['red', 'green', 'blue']
     draw_color = None
-    slider = Slider(0.3, 0.2, 0, slider_width, slider_height)
+    slider = Slider(0.0, 0.0, 0, slider_width, slider_height)
     pusher = numpy.array([0.25*slider_width, slider.bottom])
     pusher_angle = numpy.arctan2(pusher[1], pusher[0])
     side = 'bottom'
@@ -271,15 +274,24 @@ def main():
     for i in range(Nu):
         data['u%d'%i].append(0.0)
     data['side'].append(side)
+    obs_position = [0.6, 0.5]
+    obs_radius = 0.05
     screen.windows['robotenv'].static_circle(
         'green',
         screen.windows['robotenv'].convert_position(goal_position),
         screen.windows['robotenv'].convert_scalar(goal_tol),
     )
+    screen.windows['robotenv'].static_circle(
+        'blue',
+        screen.windows['robotenv'].convert_position(obs_position),
+        screen.windows['robotenv'].convert_scalar(obs_radius),
+    )
     config = dict(
         hz=hz,
         mu_g=mu_g,
         m=m,
+        obs_radius=obs_radius,
+        obs_position=obs_position,
         slider_width=slider_width,
         slider_height=slider_height,
         Nx=Nx,
@@ -354,6 +366,13 @@ def main():
             slider.update(x[:2], x[2])
             R = Rotation.from_euler('z', slider.heading, degrees=False).as_matrix()[:2,:2]
             pusher_in_world = R@pusher + slider.pos
+
+            # Check if in collision
+            pos_lhc = slider.get_corner_position()  # in local frame
+            pos_obs = Point(obs_position[0], obs_position[1], slider).pos_in_slider_frame()
+            if in_collision(pos_obs[0], pos_obs[1], obs_radius, pos_lhc[0], pos_lhc[1], slider.width, slider.height):
+                print("In collision!")
+                running = False
 
             # Draw
             screen.reset()
