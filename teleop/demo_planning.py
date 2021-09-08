@@ -19,6 +19,7 @@ planning_config = sliding_pack.load_config('teleop_planning_config.yaml')
 T = 1  # time of the simulation is seconds
 freq = 25  # number of increments per second
 show_anim = True
+save_anim = False
 save_to_file = False
 #  -------------------------------------------------------------------
 # Computing Problem constants
@@ -132,7 +133,8 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    if save_anim:
+        ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
