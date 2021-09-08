@@ -248,9 +248,14 @@ def main():
     draw_colors = ['red', 'green', 'blue']
     draw_color = None
     slider = Slider(0.0, 0.0, 0, slider_width, slider_height)
-    pusher = numpy.array([0.25*slider_width, slider.bottom])
+    side = 'left'
+    if side=='bottom':
+        pusher = numpy.array([0, slider.bottom])
+    elif side=='left':
+        pusher = numpy.array([slider.left, 0])
+    else:
+        raise ValueError(f'side not recognized ({side})')
     pusher_angle = numpy.arctan2(pusher[1], pusher[0])
-    side = 'bottom'
     fmax = 1.5  # max force
     data_col_names = ['t']
     data_col_names += ['x%d'%i for i in range(Nx)]
@@ -343,8 +348,12 @@ def main():
             # Setup
             curr_time = time.time()
             old_pusher = pusher.copy()
-            pusher[0] += j[3]*max_pusher_vel*dt
-            pusher[0] = numpy.clip(pusher[0], -0.5*slider_width, 0.5*slider_width)
+            if side == 'bottom':
+                pusher[0] += j[3]*max_pusher_vel*dt
+                pusher[0] = numpy.clip(pusher[0], -0.5*slider_width, 0.5*slider_width)
+            elif side == 'left':
+                pusher[1] += -j[3]*max_pusher_vel*dt
+                pusher[1] = numpy.clip(pusher[1], -0.5*slider_height, 0.5*slider_height)
             new_pusher_angle = numpy.arctan2(pusher[1], pusher[0])
             angle_vel = (new_pusher_angle - pusher_angle)/dt
             pusher_angle = new_pusher_angle
