@@ -20,6 +20,7 @@ otherwise the keyboard is used."""
 numpy.set_printoptions(precision=2, suppress=True)
 
 # Global constants
+save_data = True
 hz = 80
 dt = 1.0/float(hz)
 pi = numpy.pi
@@ -394,19 +395,24 @@ def main():
     except KeyboardInterrupt:
         pass
 
-    # Make data directory when needed
-    if not os.path.exists('data'):
-        os.mkdir('data')
 
-    # Save time-series data
-    stamp = time.time_ns()
-    fn = os.path.join('data', 'data_%d.csv'%stamp)
-    pandas.DataFrame(data).to_csv(fn)
+    if save_data:
 
-    # Save configuration data
-    fn = os.path.join('data', 'data_%d.config'%stamp)
-    with open(fn, 'wb') as f:
-        pickle.dump(config, f)
+        # Make data directory when needed
+        if not os.path.exists('data'):
+            os.mkdir('data')
+
+        # Save time-series data
+        stamp = time.time_ns()
+        fn = os.path.join('data', 'data_%d.csv'%stamp)
+        pandas.DataFrame(data).to_csv(fn)
+        print("Saved", fn)
+
+        # Save configuration data
+        fn = os.path.join('data', 'data_%d.config'%stamp)
+        with open(fn, 'wb') as f:
+            pickle.dump(config, f)
+        print("Saved", fn)
 
     pygame.quit()
     print("Goodbye")
