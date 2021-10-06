@@ -169,8 +169,12 @@ class buildOptObj():
             for i in range(self.TH-1):
                 # ---- Add States to optimization variables ---
                 self.opt.x += self.X[:, i].elements()
-                self.args.lbx += self.dyn.lbx
-                self.args.ubx += self.dyn.ubx
+                if i == 0: # expanding state constraint for 1st one
+                    self.args.lbx += [1.5*x for x in self.dyn.lbx]
+                    self.args.ubx += [1.5*x for x in self.dyn.ubx]
+                else:
+                    self.args.lbx += self.dyn.lbx
+                    self.args.ubx += self.dyn.ubx
                 self.args.x0 += self.X_nom_val[:, i].elements()
                 self.opt.discrete += [False]*self.dyn.Nx
                 # ---- Add Actions to optimization variables ---
@@ -270,7 +274,9 @@ class buildOptObj():
             opts_dict['ipopt.hessian_constant'] = 'yes'
         if self.solver_name == 'knitro':
             opts_dict['knitro'] = {}
-            if self.no_printing: opts_dict['knitro'] = {'mip_outlevel': 0}
+            # opts_dict['knitro.maxit'] = 80
+            opts_dict['knitro.feastol'] = 1.e-3
+            if self.no_printing: opts_dict['knitro']['mip_outlevel'] = 0
         if self.solver_name == 'snopt':
             opts_dict['snopt'] = {}
             if self.no_printing: opts_dict['snopt'] = {'Major print level': '0', 'Minor print level': '0'}

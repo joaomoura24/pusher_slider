@@ -28,7 +28,7 @@ with open('../config/planning_config.yaml', 'r') as configFile:
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 5  # time of the simulation is seconds
+T = 3  # time of the simulation is seconds
 freq = 25  # number of increments per second
 show_anim = True
 save_to_file = False
@@ -60,30 +60,40 @@ x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, 0
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
 #  ------------------------------------------------------------------
 
-# Set obstacles
-#  ------------------------------------------------------------------
-obsCentre = [[0.2, 0.2], [0., 0.4]]
-obsRadius = [0.05, 0.05]
-#  ------------------------------------------------------------------
-
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
         dyn, N, planning_config['TO'], X_nom_val, dt=dt)
+# Set obstacles
+#  ------------------------------------------------------------------
+if optObj.numObs==0:
+    obsCentre = None
+    obsRadius = None
+elif optObj.numObs==2:
+    obsCentre = [[0.2, 0.2], [0.1, 0.5]]
+    obsRadius = [0.05, 0.05]
+elif optObj.numObs==3:
+    obsCentre = [[0.2, 0.2], [0.0, 0.4], [0.3, 0.0]]
+    obsRadius = [0.05, 0.05, 0.05]
+#  ------------------------------------------------------------------
+x_init = [0., 0., 0.*(np.pi/180.), 0.]
 resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProblem(
-        0, X_nom_val[:, 0].elements(),
+        0, x_init,
         obsCentre=obsCentre, obsRadius=obsRadius)
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
 f_rollout = f_d.mapaccum(N-1)
 print('comp time: ', t_opt)
+p_map = dyn.p.map(N)
+X_pusher_opt = p_map(X_nom_val_opt)
 #  ------------------------------------------------------------------
+
 
 if save_to_file:
     #  Save data to file using pandas
     #  -------------------------------------------------------------------
     df_state = pd.DataFrame(
-                    np.array(X_nom_val_opt).transpose(),
-                    columns=['x_opt', 'y_opt', 'theta_opt', 'psi_opt'])
+                    np.array(cs.vertcat(X_nom_val_opt,X_pusher_opt)).transpose(),
+                    columns=['x_slider', 'y_slider', 'theta_slider', 'psi_pusher', 'x_pusher', 'y_pusher'])
     df_state.to_csv('planning_with_obstacles_state.csv',
                     float_format='%.5f')
     df_action = pd.DataFrame(
@@ -99,15 +109,16 @@ plt.rcParams['figure.dpi'] = 150
 if show_anim:
     #  ---------------------------------------------------------------
     fig, ax = sliding_pack.plots.plot_nominal_traj(
-                x0_nom, x1_nom)
+                x0_nom, x1_nom, plot_title='')
     # add computed nominal trajectory
     X_nom_val_opt = np.array(X_nom_val_opt)
     ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
             linewidth=2.0, linestyle='dashed')
     # add obstacles
-    for i in range(len(obsCentre)):
-        circle_i = plt.Circle(obsCentre[i], obsRadius[i], color='b')
-        ax.add_patch(circle_i)
+    if optObj.numObs > 0:
+        for i in range(len(obsCentre)):
+            circle_i = plt.Circle(obsCentre[i], obsRadius[i], color='b')
+            ax.add_patch(circle_i)
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
@@ -123,7 +134,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    # ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results

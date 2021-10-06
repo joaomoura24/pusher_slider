@@ -9,8 +9,8 @@ dynamics:
     pusherFricCoef: 0.2
     pusherForceLim:  0.3
     pusherAngleVelLim: 3.0
-    Kz_max: 1.
-    Kz_min: 1.
+    Kz_max: 50.
+    Kz_min: 50.
 
 TO:
     # contactMode: 'sticking'  # 'sticking', 'sliding_cc', or 'sliding_mi'
@@ -19,12 +19,11 @@ TO:
     # contactMode: 'sliding_cc_slack'  # 'sticking', 'sliding_cc', 'sliding_cc_slack', or 'sliding_mi'
     solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
     # solverName: 'knitro'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
-    # solverName: 'ipopt'  # 'ipopt', 'snopt', 'gurobi', 'qpoases', 'knitro'
-    W_x: [1.0, 1.0, 0.01, 0.]  # diagonal state weights
-    W_u: [0.05, 0.05, 0., 0.]  # diagonal control weights
-    K_goal: 100
+    W_x: [1.0, 1.0, 0.01, 0.001]  # diagonal state weights
+    W_u: [0., 0., 0., 0.]  # diagonal control weights
+    K_goal: 1
     X_goal: [0.3, 0.4, 4.71, 0.]
-    numObs: 2
+    numObs: 3
     # X_goal: null
     linDynFlag: False
     codeGenFlag: False
