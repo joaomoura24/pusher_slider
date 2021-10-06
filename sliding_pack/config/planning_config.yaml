@@ -22,8 +22,8 @@ TO:
     W_x: [1.0, 1.0, 0.01, 0.001]  # diagonal state weights
     W_u: [0., 0., 0., 0.]  # diagonal control weights
     K_goal: 1
-    X_goal: [0.3, 0.4, 4.71, 0.]
-    numObs: 3
+    X_goal: [0.4, 0.0, 0, 0.]
+    numObs: 0
     # X_goal: null
     linDynFlag: False
     codeGenFlag: False

@@ -271,9 +271,12 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
 
     def set_patches(self, ax, x_data):
         x0 = x_data[:, 0]
-        d0 = np.array(cs.mtimes(self.R(x0), [-self.xl/2, -self.yl/2, 0]).T)[0]
+        # R0 = np.array(self.R(x0))
+        R0 = np.eye(3)
+        d0 = R0.dot(np.array([-self.xl/2., -self.yl/2., 0]))
         self.slider = patches.Rectangle(
-                x0[0:2]+d0[0:2], self.xl, self.yl, x0[2])
+                # x0[0:2]+d0[0:2], self.xl, self.yl, angle=np.rad2deg(x0[2]))
+                x0[0:2]+d0[0:2], self.xl, self.yl, angle=0.0)
         self.pusher = patches.Circle(
                 np.array(self.p(x0)), radius=self.r_pusher, color='black')
         self.path_past, = ax.plot(x0[0], x0[1], color='orange')
@@ -286,7 +289,9 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
     def animate(self, i, ax, x_data, X_future=None):
         xi = x_data[:, i]
         # distance between centre of square reference corner
-        di = np.array(cs.mtimes(self.R(xi), [-self.xl/2, -self.yl/2, 0]).T)[0]
+        Ri = np.array(self.R(xi))
+        di = Ri.dot(np.array([-self.xl/2, -self.yl/2, 0]))
+        # di = np.array(cs.mtimes(self.R(xi), [-self.xl/2, -self.yl/2, 0]).T)[0]
         # square reference corner
         ci = xi[0:3] + di
         # compute transformation with respect to rotation angle xi[2]

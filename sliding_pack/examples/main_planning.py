@@ -28,7 +28,7 @@ with open('../config/planning_config.yaml', 'r') as configFile:
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 3  # time of the simulation is seconds
+T = 2.5  # time of the simulation is seconds
 freq = 25  # number of increments per second
 show_anim = True
 save_to_file = False
@@ -76,7 +76,8 @@ elif optObj.numObs==3:
     obsCentre = [[0.2, 0.2], [0.0, 0.4], [0.3, 0.0]]
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
-x_init = [0., 0., 0.*(np.pi/180.), 0.]
+x_init = [0., 0., -20.*(np.pi/180.), 0.]
+# x_init = [0., 0., 340.*(np.pi/180.), 0.]
 resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProblem(
         0, x_init,
         obsCentre=obsCentre, obsRadius=obsRadius)
@@ -134,58 +135,58 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('planning_with_obstacles.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
-# Plot Optimization Results
-#  -------------------------------------------------------------------
-fig, axs = plt.subplots(3, 4, sharex=True)
-fig.set_size_inches(10, 10, forward=True)
-t_Nx = np.linspace(0, T, N)
-t_Nu = np.linspace(0, T, N-1)
-ctrl_g = dyn.g_u.map(N-1)
-ctrl_g_val = ctrl_g(U_nom_val_opt, other_opt)
-#  -------------------------------------------------------------------
-# plot position
-for i in range(dyn.Nx):
-    axs[0, i].plot(t_Nx, X_nom_val[i, 0:N].T, color='red',
-                   linestyle='--', label='nom')
-    axs[0, i].plot(t_Nx, X_nom_val_opt[i, 0:N].T, color='blue',
-                   linestyle='--', label='plan')
-    handles, labels = axs[0, i].get_legend_handles_labels()
-    axs[0, i].legend(handles, labels)
-    axs[0, i].set_xlabel('time [s]')
-    axs[0, i].set_ylabel('x%d' % i)
-    axs[0, i].grid()
-#  -------------------------------------------------------------------
-# plot extra variables
-for i in range(dyn.Nz):
-    axs[1, 2].plot(t_Nu, other_opt[i, :].T, label='s%d' % i)
-handles, labels = axs[1, 2].get_legend_handles_labels()
-axs[1, 2].legend(handles, labels)
-axs[1, 2].set_xlabel('time [s]')
-axs[1, 2].set_ylabel('extra vars')
-axs[1, 2].grid()
-#  -------------------------------------------------------------------
-# plot constraints
-for i in range(dyn.Ng_u):
-    axs[1, 3].plot(t_Nu, ctrl_g_val[i, :].T, label='g%d' % i)
-handles, labels = axs[1, 3].get_legend_handles_labels()
-axs[1, 3].legend(handles, labels)
-axs[1, 3].set_xlabel('time [s]')
-axs[1, 3].set_ylabel('constraints')
-axs[1, 3].grid()
-#  -------------------------------------------------------------------
-# plot actions
-for i in range(dyn.Nu):
-    axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
-                   linestyle='--', label='plan')
-    handles, labels = axs[2, i].get_legend_handles_labels()
-    axs[2, i].legend(handles, labels)
-    axs[2, i].set_xlabel('time [s]')
-    axs[2, i].set_ylabel('u%d' % i)
-    axs[2, i].grid()
-#  -------------------------------------------------------------------
+# # Plot Optimization Results
+# #  -------------------------------------------------------------------
+# fig, axs = plt.subplots(3, 4, sharex=True)
+# fig.set_size_inches(10, 10, forward=True)
+# t_Nx = np.linspace(0, T, N)
+# t_Nu = np.linspace(0, T, N-1)
+# ctrl_g = dyn.g_u.map(N-1)
+# ctrl_g_val = ctrl_g(U_nom_val_opt, other_opt)
+# #  -------------------------------------------------------------------
+# # plot position
+# for i in range(dyn.Nx):
+#     axs[0, i].plot(t_Nx, X_nom_val[i, 0:N].T, color='red',
+#                    linestyle='--', label='nom')
+#     axs[0, i].plot(t_Nx, X_nom_val_opt[i, 0:N].T, color='blue',
+#                    linestyle='--', label='plan')
+#     handles, labels = axs[0, i].get_legend_handles_labels()
+#     axs[0, i].legend(handles, labels)
+#     axs[0, i].set_xlabel('time [s]')
+#     axs[0, i].set_ylabel('x%d' % i)
+#     axs[0, i].grid()
+# #  -------------------------------------------------------------------
+# # plot extra variables
+# for i in range(dyn.Nz):
+#     axs[1, 2].plot(t_Nu, other_opt[i, :].T, label='s%d' % i)
+# handles, labels = axs[1, 2].get_legend_handles_labels()
+# axs[1, 2].legend(handles, labels)
+# axs[1, 2].set_xlabel('time [s]')
+# axs[1, 2].set_ylabel('extra vars')
+# axs[1, 2].grid()
+# #  -------------------------------------------------------------------
+# # plot constraints
+# for i in range(dyn.Ng_u):
+#     axs[1, 3].plot(t_Nu, ctrl_g_val[i, :].T, label='g%d' % i)
+# handles, labels = axs[1, 3].get_legend_handles_labels()
+# axs[1, 3].legend(handles, labels)
+# axs[1, 3].set_xlabel('time [s]')
+# axs[1, 3].set_ylabel('constraints')
+# axs[1, 3].grid()
+# #  -------------------------------------------------------------------
+# # plot actions
+# for i in range(dyn.Nu):
+#     axs[2, i].plot(t_Nu, U_nom_val_opt[i, 0:N-1].T, color='blue',
+#                    linestyle='--', label='plan')
+#     handles, labels = axs[2, i].get_legend_handles_labels()
+#     axs[2, i].legend(handles, labels)
+#     axs[2, i].set_xlabel('time [s]')
+#     axs[2, i].set_ylabel('u%d' % i)
+#     axs[2, i].grid()
+# #  -------------------------------------------------------------------
 
 #  -------------------------------------------------------------------
 plt.show()
