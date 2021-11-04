@@ -147,6 +147,7 @@ class Data:
         filename = 'data_' + os.path.basename(__file__) + '.dat'
         with open(filename, 'wb') as f:
             pickle.dump({'x': x, 't': t}, f)
+        print("Saved", filename)
 
 # -------------------------------------------------------------------------------------------
 #
