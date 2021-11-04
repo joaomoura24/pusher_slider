@@ -48,6 +48,7 @@ side2vec = dict(
 
 def in_collision(cx, cy, r, rx, ry, rw, rh):
     # Check if circle and rectangle are in collision: http://www.jeffreythompson.org/collision-detection/circle-rect.php
+    # Note, this may be circumvented by using sprites but perhaps keep for now
     # cx - x-position of circle
     # cy - y-position of circle
     # r - radius of circle
