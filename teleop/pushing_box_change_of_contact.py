@@ -131,8 +131,9 @@ def point_on_rectangle_given_angle(phi, w, h):
 class Data:
 
     def __init__(self, N):
-        self.t = []
-        self.x = []
+        self.t = []  # time, real time using python time.time() method
+        self.x = []  # state trajectory
+        self.cf = []  # contact flag: True means in contact, False otherwise
         self.N = N  # final discritization
 
     def save(self):
@@ -353,6 +354,7 @@ dynamics_model = DYN_PUSHER_MODEL
 # Append initial state to data
 data.t.append(time.time())
 data.x.append(x.tolist())
+data.cf.append(True)  # always starts in contact
 
 # Main loop
 while running:
@@ -387,10 +389,12 @@ while running:
     if dynamics_model == DYN_POINT_MODEL:
         h = joy.h_for_point_model(x, side)
         xdot = dyn_point(x, h)
+        in_contact = False
     elif (dynamics_model == DYN_PUSHER_MODEL) and near_dist > pusher_body_dist_tol:
         # space released, now move robot to body side (nearest point)
         vP = 0.8*max_pusher_speed*normalize((near_point - x[4:]).reshape(1, -1)).flatten()
         xdot = dyn_point(x, vP)
+        in_contact = False
     else:
         # ensure pusher is on surface of body and compute xdot
         # x[4:] = point_on_rectangle_given_angle(x[3], body_width, body_height)
@@ -399,6 +403,7 @@ while running:
         x[4:] = point_on_rectangle_given_angle(x[3], body_width, body_height)
         h = joy.h_for_pusher_model(x, side)
         xdot = dyn_pusher(x, h, side)
+        in_contact = True
 
     x += dt*xdot
 
@@ -432,6 +437,7 @@ while running:
     # Update data
     data.t.append(time.time())
     data.x.append(x.tolist())
+    data.cf.append(in_contact)
 
 # -------------------------------------------------------------------------------------------
 #
