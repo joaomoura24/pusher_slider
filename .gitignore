@@ -12,3 +12,4 @@ tikz_schematics/*
 *.so
 data/
 __pycache__
+*.dat
