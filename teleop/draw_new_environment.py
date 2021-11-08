@@ -97,6 +97,17 @@ def main():
     except KeyboardInterrupt:
         pass
 
+    pygame.quit()
+
+
+    if len(obs_data) == 0:
+        print("WARN: no obstacle data given!")
+    if start_pos is None:
+        print("WARN: start position not given!")
+    if end_pos is None:
+        print("WARN: end position not given!")
+
+
     timestamp = datetime.datetime.now()
     filename = 'env_data' + timestamp.strftime('_%Y-%m-%d-%H-%M-%S') + '.dat'
     filename_full = os.path.join(os.getcwd(), 'environment_descriptions', filename)
@@ -106,7 +117,6 @@ def main():
     print("Saved", filename, 'in environment_descriptions/')
 
 
-    pygame.quit()
     print("Goodbye")
 
 
