@@ -1,3 +1,4 @@
+import os
 import pickle
 import datetime
 import pygame
@@ -98,10 +99,12 @@ def main():
 
     timestamp = datetime.datetime.now()
     filename = 'env_data' + timestamp.strftime('_%Y-%m-%d-%H-%M-%S') + '.dat'
+    filename_full = os.path.join(os.getcwd(), 'environment_descriptions', filename)
     data = {'obs': obs_data, 'start': start_pos, 'goal': end_pos}
-    with open(filename, 'wb') as f:
+    with open(filename_full, 'wb') as f:
         pickle.dump(data, f)
-    print("Saved", filename)
+    print("Saved", filename, 'in environment_descriptions/')
+
 
     pygame.quit()
     print("Goodbye")
