@@ -1,26 +1,11 @@
 # teleop
 
-## Requirements
-
-- pygame
-- [pygame_teleop](https://github.com/cmower/pygame_teleop)
-- scipy
-- numpy
-- pandas
-
-## Data
-
-For each trial, two data files are saved.
-The filenames for the two files have the following structure `data_STAMP.csv` and `data_STAMP.config` where `STAMP` is a unique time stamp, these are time-series data and the configuration respectively.
-See the demo scripts for an explanation of the meaning of each parameter in the configuration data.
-
-Columns of `.csv` file:
-- `t`: time stamp (secs)
-- `x0`: x-position of object in world frame
-- `x1`: y-position of object in world frame
-- `x2`: heading of object in world frame
-- `x3`: angle of pusher relative to slider frame
-- `u0`: applied normal force magnitude at contact point resolved in the body frame
-- `u1`: applied tangential force magnitude at contact point resolved in the body frame
-- `u2`: commanded angular velocities resolved in the body frame
-- `side`: side of slider that the pusher interacts with
+Current pipeline.
+1. Draw a new environment, i.e. obstacles, and start/goal positions using `draw_new_environment.py`
+   - left button adds obstacles to scene, middle button adds start position, and right button adds goal position
+   - when complete, press ESC, the script will save a data file containing the environment specification
+1. User can then provide a demonstration via joystick by running `push_box_interface.py`
+   - make sure to add a path to environment description (i.e. a file produced in previous script)
+   - use joystick to provide input
+   - use ESC to finish the demonstration
+   - a data file containing the demonstration data is saved
