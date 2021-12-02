@@ -7,6 +7,8 @@ from scipy.interpolate import interp1d
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpl_patches
 
+R90 = np.array([[0, -1], [1, 0]])  # rotation matrix about 90 degrees
+
 def pprint_dict(d, indent=0):
     indent_spaces = " "*indent
     print(indent_spaces, '{')
@@ -160,194 +162,246 @@ class InterfaceData:
         self.Nobs = self.obs_r.shape[0]  # reset Nobs
         print(f"Environment model reduced from {Nobs_full} points to {self.Nobs}.")
 
+
+
+class DataPlotter:
+
+    def __init__(self, interface_data):
+        self.interface_data = interface_data
+        self.ax_birdseye = None
+        self.ax_panel = None
+
+    def plot_birdseye(self):
+
+        # Plot birds eye view
+        fig, ax = plt.subplots(tight_layout=True, figsize=(12, 12))
+
+        ax.plot(self.interface_data.xB, self.interface_data.yB, '-g', label='Body path')
+        # ax.plot(self.interface_data.xPW, self.interface_data.yPW, '-b', label='Pusher path')
+
+        is_first_r = True
+        is_first_b = True
+        for seg in self.interface_data.time_segments:
+            start_time = seg['segment_start_time']
+            end_time = seg['segment_end_time']
+            t = np.linspace(start_time, end_time, 50)
+            xx = self.interface_data.xPW_fun(t)
+            yy = self.interface_data.yPW_fun(t)
+
+            if seg['in_contact']:
+                fmt = '-'
+            else:
+                fmt = ':'
+
+            add = dict()
+
+            if seg['in_contact'] and is_first_r:
+                add['label'] = 'pusher in contact'
+                is_first_r = False
+            if (not seg['in_contact']) and is_first_b:
+                add['label'] = 'pusher not in contact'
+                is_first_b = False
+
+            ax.plot(xx, yy, fmt+'b', **add)
+
+        # is_first_r = True
+        # is_first_b = True
+
+        # for k in range(self.interface_data.t.shape[0]):
+
+        #     if self.interface_data.cF[k]:
+        #         color='r'
+        #         label = 'pusher in contact'
+        #         in_contact = True
+        #     else:
+        #         color='b'
+        #         label = 'pusher not in contact'
+        #         in_contact = False
+
+
+        #     plt_config = dict(color=color, markersize=0.5)
+        #     if in_contact and is_first_r:
+        #         plt_config['label'] = label
+        #         is_first_r = False
+        #     if (not in_contact) and is_first_b:
+        #         plt_config['label'] = label
+        #         is_first_b = False
+
+        #     ax.plot(self.interface_data.xPW[k], self.interface_data.yPW[k], 'o', **plt_config)
+
+
+        # for s, e in time_segs:
+        #     t = np.linspace(s, e, 100000)
+        #     ax.plot(self.interface_data.xPW_fun(t), self.interface_data.yPW_fun(t), '-r')
+
+        # Plot rectangles to represent body
+        n_rect = 30
+        alpha = np.linspace(0.01, 0.5, n_rect)
+        t = np.linspace(0, self.interface_data.t.max(), n_rect)
+        for k in range(n_rect):
+            tt = t[k]
+            xy_rect_mid = np.array([self.interface_data.xB_fun(tt), self.interface_data.yB_fun(tt)])
+            angle_rect = self.interface_data.thetaB_fun(tt)
+            dr_x = np.array([np.cos(angle_rect), np.sin(angle_rect)])
+            xy_rect_corner = xy_rect_mid + (-.25*dr_x) + (-.25*R90@dr_x)
+            rect_input = dict(angle=np.rad2deg(angle_rect), color='#BDB76B', alpha=alpha[k])
+            if k == n_rect-1:
+                rect_input['label'] = 'Body'
+            ax.add_patch(mpl_patches.Rectangle(xy_rect_corner, 0.5, 0.5, **rect_input))
+
+        # Plot circles to represent pusher
+        n_circ = 150
+        alpha = np.linspace(0.1, 0.5, n_circ)
+        t = np.linspace(0, self.interface_data.t.max(), n_circ)
+        for k in range(n_circ):
+            tt = t[k]
+            plt_input = dict(alpha=alpha[k])
+            if k == n_circ-1:
+                plt_input['label'] = 'pusher'
+            ax.plot([self.interface_data.xPW_fun(tt)], [self.interface_data.yPW_fun(tt)], 'ob', **plt_input)
+
+
+        ax.plot([self.interface_data.start[0]], [self.interface_data.start[1]], 'go', label='Start')
+        ax.plot([self.interface_data.goal[0]], [self.interface_data.goal[1]], 'ro', label='Goal')
+
+        for i in range(self.interface_data.Nobs):
+            circle_input = dict(xy=self.interface_data.obs_p[:, i], radius=self.interface_data.obs_r[i], color='k')
+            if i == 0:
+                circle_input['label'] = 'Obstacle'
+            ax.add_patch(mpl_patches.Circle(**circle_input))
+
+        ds_plot_pad = 1
+        xlim = [
+            self.interface_data.obs_p[0,:].min()-self.interface_data.obs_r.min()-ds_plot_pad,
+            self.interface_data.obs_p[0,:].max()+self.interface_data.obs_r.max()+ds_plot_pad,
+        ]
+        ylim = [
+            self.interface_data.obs_p[1,:].min()-self.interface_data.obs_r.min()-ds_plot_pad,
+            self.interface_data.obs_p[1,:].max()+self.interface_data.obs_r.max()+ds_plot_pad,
+        ]
+        ax.grid()
+        ax.legend(loc='upper right')
+        ax.set_xlim(*xlim)
+        ax.set_ylim(*ylim)
+        ax.set_aspect('equal')
+
+        self.ax_birdseye = ax
+
+        print("Completed birdseye view plot")
+
+    def plot_panel(self):
+
+        # Plot time evolutions
+        fig, ax = plt.subplots(3, 2, tight_layout=True, sharex=True, figsize=(10, 8))
+
+        for a in ax[-1, :]:
+            a.set_xlabel('Time (s)')
+
+        def plot_time(ax, t, data, colors, labels, ylabel):
+            ax.set_ylabel(ylabel)
+            if isinstance(data, list):
+                for d, l, c in zip(data, labels, colors):
+                    ax.plot(t, d, '-', color=c, label=l)
+            else:
+                ax.plot(t, data, '-', color=colors, label=labels)
+
+        # body
+        plot_time(ax[0, 0], self.interface_data.t, [self.interface_data.xB, self.interface_data.yB], ['r', 'b'], ['x', 'y'], 'Body position')
+        plot_time(ax[1, 0], self.interface_data.t, [self.interface_data.dxB, self.interface_data.dyB], ['r', 'b'], ['x', 'y'], 'Body velocity')
+        plot_time(ax[2, 0], self.interface_data.t, self.interface_data.thetaB, 'g', 'theta', 'Body heading')
+
+        # pusher
+        # plot_time(ax[0, 1], self.interface_data.t, [self.interface_data.xPW, self.interface_data.yPW], ['r', 'b'], ['x', 'y'], 'Pusher position')
+        plot_time(ax[1, 1], self.interface_data.t, [self.interface_data.dxPW, self.interface_data.dyPW], ['r', 'b'], ['x', 'y'], 'Pusher velocity')
+        plot_time(ax[2, 1], self.interface_data.t, self.interface_data.phiP, 'g', 'phi', 'Pusher angle (body frame)')
+
+        is_first_r = True
+        is_first_b = True
+        for seg in self.interface_data.time_segments:
+
+            start_time = seg['segment_start_time']
+            end_time = seg['segment_end_time']
+            t = np.linspace(start_time, end_time, 50)
+
+            if seg['in_contact']:
+                fmtx = '-'
+                fmty = '-'
+            else:
+                fmtx = ':'
+                fmty = ':'
+
+            addx = dict()
+            addy = dict()
+
+            if seg['in_contact'] and is_first_r:
+                addx['label'] = 'x-pos in contact'
+                addy['label'] = 'y-pos in contact'
+                is_first_r = False
+            if (not seg['in_contact']) and is_first_b:
+                addx['label'] = 'x-pos not in contact'
+                addy['label'] = 'y-pos not in contact'
+                is_first_b = False
+
+            ax[0, 1].plot(t, self.interface_data.xPW_fun(t), fmtx, color='r', **addx)
+            ax[0, 1].plot(t, self.interface_data.yPW_fun(t), fmty, color='b', **addy)
+
+        ax[0, 1].set_ylabel('Pusher position')
+
+        # is_first_r = True
+        # is_first_b = True
+        # for k in range(self.interface_data.t.shape[0]):
+
+        #     if self.interface_data.cF[k]:
+        #         colorx='r'
+        #         colory='b'
+        #         label = 'pusher in contact'
+        #         in_contact = True
+        #     else:
+        #         colorx='orange'
+        #         colory='purple'
+        #         label = 'pusher not in contact'
+        #         in_contact = False
+
+        #     plt_configx = dict(markersize=0.5, color=colorx)
+        #     plt_configy = dict(markersize=0.5, color=colory)
+        #     if in_contact and is_first_r:
+        #         plt_configx['label'] = 'x-pos in contact'
+        #         plt_configy['label'] = 'y-pos in contact'
+        #         is_first_r = False
+        #     if (not in_contact) and is_first_b:
+        #         plt_configx['label'] = 'x-pos not in contact'
+        #         plt_configy['label'] = 'y-pos not in contact'
+        #         is_first_b = False
+
+        #     ax[0, 1].plot(self.interface_data.t[k], self.interface_data.xPW[k], 'o', **plt_configx)
+        #     ax[0, 1].plot(self.interface_data.t[k], self.interface_data.yPW[k], 'o', **plt_configy)
+
+        # Apply formatting to all figures
+        for a in ax.flatten():
+            a.grid()
+            a.legend()
+
+        self.ax_panel = ax
+
+        print("Completed time evolution view plots")
+
+    def show(self):
+        plt.show()
+
+
 # Load interface data using above class
 interface_data_filename = os.path.join(
     os.getcwd(),
     'interface_data',
-    'interface_data_wall.dat',
+    # 'interface_data_wall.dat',
+    # 'interface_data_tunnel.dat',
+    'interface_data_tunnel_use.dat',
 )
 interface_data = InterfaceData(interface_data_filename)
 interface_data.downsample_environment(150, random_seed=10)
 
-# Plot birds eye view
-fig, ax = plt.subplots(tight_layout=True, figsize=(10, 10))
-
-ax.plot(interface_data.xB, interface_data.yB, '-g', label='Body path')
-# ax.plot(interface_data.xPW, interface_data.yPW, '-b', label='Pusher path')
-
-
-is_first_r = True
-is_first_b = True
-for seg in interface_data.time_segments:
-    start_time = seg['segment_start_time']
-    end_time = seg['segment_end_time']
-    t = np.linspace(start_time, end_time, 50)
-    xx = interface_data.xPW_fun(t)
-    yy = interface_data.yPW_fun(t)
-
-    if seg['in_contact']:
-        fmt = '-'
-    else:
-        fmt = ':'
-
-    add = dict()
-
-    if seg['in_contact'] and is_first_r:
-        add['label'] = 'pusher in contact'
-        is_first_r = False
-    if (not seg['in_contact']) and is_first_b:
-        add['label'] = 'pusher not in contact'
-        is_first_b = False
-
-    ax.plot(xx, yy, fmt+'b', **add)
-
-# is_first_r = True
-# is_first_b = True
-
-# for k in range(interface_data.t.shape[0]):
-
-#     if interface_data.cF[k]:
-#         color='r'
-#         label = 'pusher in contact'
-#         in_contact = True
-#     else:
-#         color='b'
-#         label = 'pusher not in contact'
-#         in_contact = False
-
-
-#     plt_config = dict(color=color, markersize=0.5)
-#     if in_contact and is_first_r:
-#         plt_config['label'] = label
-#         is_first_r = False
-#     if (not in_contact) and is_first_b:
-#         plt_config['label'] = label
-#         is_first_b = False
-
-#     ax.plot(interface_data.xPW[k], interface_data.yPW[k], 'o', **plt_config)
-
-
-# for s, e in time_segs:
-#     t = np.linspace(s, e, 100000)
-#     ax.plot(interface_data.xPW_fun(t), interface_data.yPW_fun(t), '-r')
-
-
-ax.plot([interface_data.start[0]], [interface_data.start[1]], 'go', label='Start')
-ax.plot([interface_data.goal[0]], [interface_data.goal[1]], 'ro', label='Goal')
-
-for i in range(interface_data.Nobs):
-    circle_input = dict(xy=interface_data.obs_p[:, i], radius=interface_data.obs_r[i], color='k')
-    if i == 0:
-        circle_input['label'] = 'Obstacle'
-    ax.add_patch(mpl_patches.Circle(**circle_input))
-
-ds_plot_pad = 1
-xlim = [
-    interface_data.obs_p[0,:].min()-interface_data.obs_r.min()-ds_plot_pad,
-    interface_data.obs_p[0,:].max()+interface_data.obs_r.max()+ds_plot_pad,
-]
-ylim = [
-    interface_data.obs_p[1,:].min()-interface_data.obs_r.min()-ds_plot_pad,
-    interface_data.obs_p[1,:].max()+interface_data.obs_r.max()+ds_plot_pad,
-]
-ax.grid()
-ax.legend(loc='upper right')
-ax.set_xlim(*xlim)
-ax.set_ylim(*ylim)
-ax.set_aspect('equal')
-
-print("Completed birdseye view plot")
-
-# Plot time evolutions
-fig, ax = plt.subplots(3, 2, tight_layout=True, sharex=True, figsize=(10, 8))
-
-for a in ax[-1, :]:
-    a.set_xlabel('Time (s)')
-
-def plot_time(ax, t, data, colors, labels, ylabel):
-    ax.set_ylabel(ylabel)
-    if isinstance(data, list):
-        for d, l, c in zip(data, labels, colors):
-            ax.plot(t, d, '-', color=c, label=l)
-    else:
-        ax.plot(t, data, '-', color=colors, label=labels)
-
-
-# body
-plot_time(ax[0, 0], interface_data.t, [interface_data.xB, interface_data.yB], ['r', 'b'], ['x', 'y'], 'Body position')
-plot_time(ax[1, 0], interface_data.t, [interface_data.dxB, interface_data.dyB], ['r', 'b'], ['x', 'y'], 'Body velocity')
-plot_time(ax[2, 0], interface_data.t, interface_data.thetaB, 'g', 'theta', 'Body heading')
-
-# pusher
-# plot_time(ax[0, 1], interface_data.t, [interface_data.xPW, interface_data.yPW], ['r', 'b'], ['x', 'y'], 'Pusher position')
-plot_time(ax[1, 1], interface_data.t, [interface_data.dxPW, interface_data.dyPW], ['r', 'b'], ['x', 'y'], 'Pusher velocity')
-plot_time(ax[2, 1], interface_data.t, interface_data.phiP, 'g', 'phi', 'Pusher angle (body frame)')
-
-
-is_first_r = True
-is_first_b = True
-for seg in interface_data.time_segments:
-
-    start_time = seg['segment_start_time']
-    end_time = seg['segment_end_time']
-    t = np.linspace(start_time, end_time, 50)
-
-    if seg['in_contact']:
-        fmtx = '-'
-        fmty = '-'
-    else:
-        fmtx = ':'
-        fmty = ':'
-
-    addx = dict()
-    addy = dict()
-
-    if seg['in_contact'] and is_first_r:
-        addx['label'] = 'x-pos in contact'
-        addy['label'] = 'y-pos in contact'
-        is_first_r = False
-    if (not seg['in_contact']) and is_first_b:
-        addx['label'] = 'x-pos not in contact'
-        addy['label'] = 'y-pos not in contact'
-        is_first_b = False
-
-    ax[0, 1].plot(t, interface_data.xPW_fun(t), fmtx, color='r', **addx)
-    ax[0, 1].plot(t, interface_data.yPW_fun(t), fmty, color='b', **addy)
-
-# is_first_r = True
-# is_first_b = True
-# for k in range(interface_data.t.shape[0]):
-
-#     if interface_data.cF[k]:
-#         colorx='r'
-#         colory='b'
-#         label = 'pusher in contact'
-#         in_contact = True
-#     else:
-#         colorx='orange'
-#         colory='purple'
-#         label = 'pusher not in contact'
-#         in_contact = False
-
-#     plt_configx = dict(markersize=0.5, color=colorx)
-#     plt_configy = dict(markersize=0.5, color=colory)
-#     if in_contact and is_first_r:
-#         plt_configx['label'] = 'x-pos in contact'
-#         plt_configy['label'] = 'y-pos in contact'
-#         is_first_r = False
-#     if (not in_contact) and is_first_b:
-#         plt_configx['label'] = 'x-pos not in contact'
-#         plt_configy['label'] = 'y-pos not in contact'
-#         is_first_b = False
-
-#     ax[0, 1].plot(interface_data.t[k], interface_data.xPW[k], 'o', **plt_configx)
-#     ax[0, 1].plot(interface_data.t[k], interface_data.yPW[k], 'o', **plt_configy)
-
-# Apply formatting to all figures
-for a in ax.flatten():
-    a.grid()
-    a.legend()
-
-print("Completed time evolution view plots")
-
-plt.show()
+# Plot data
+dp = DataPlotter(interface_data)
+dp.plot_birdseye()
+dp.plot_panel()
+dp.show()
