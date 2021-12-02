@@ -154,7 +154,8 @@ class Data:
 
         # Save
         timestamp = datetime.datetime.now()
-        filename = 'interface_data_' + os.path.basename(__file__) + timestamp.strftime('_%Y-%m-%d-%H-%M-%S') + '.dat'
+        # filename = 'interface_data_' + os.path.basename(__file__) + timestamp.strftime('_%Y-%m-%d-%H-%M-%S') + '.dat'
+        filename = 'interface_data_tunnel_use.dat'
         filename_full = os.path.join(os.getcwd(), 'interface_data', filename)
         with open(filename_full, 'wb') as f:
             pickle.dump({'x': x, 't': t, 'cf': self.cf, 'env': env_config, 'u_pusher': u_pusher, 'u_point': u_point}, f)
