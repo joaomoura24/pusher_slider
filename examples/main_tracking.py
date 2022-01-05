@@ -28,11 +28,12 @@ planning_config = sliding_pack.load_config('nom_config.yaml')
 
 # Set Problem constants
 #  -------------------------------------------------------------------
-T = 4  # time of the simulation is seconds
+T = 10  # time of the simulation is seconds
 freq = 25  # number of increments per second
 # N_MPC = 12 # time horizon for the MPC controller
-N_MPC = 15  # time horizon for the MPC controller
-x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
+N_MPC = 25  # time horizon for the MPC controller
+# x_init_val = [-0.03, 0.03, 30*(np.pi/180.), 0]
+x_init_val = [0., 0., 45*(np.pi/180.), 0]
 show_anim = True
 save_to_file = False
 #  -------------------------------------------------------------------
@@ -41,6 +42,7 @@ save_to_file = False
 dt = 1.0/freq  # sampling time
 N = int(T*freq)  # total number of iterations
 Nidx = int(N)
+idxDist = 5.*freq
 # Nidx = 10
 #  -------------------------------------------------------------------
 
@@ -58,9 +60,9 @@ X_goal = tracking_config['TO']['X_goal']
 # print(X_goal)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(X_goal[0], X_goal[1], N, N_MPC)
 # x0_nom, x1_nom = sliding_pack.traj.generate_traj_line(0.5, 0.3, N, N_MPC)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.1, N, N_MPC)
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
-# x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.2, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+# x0_nom, x1_nom = sliding_pack.traj.generate_traj_ellipse(-np.pi/2, 3*np.pi/2, 0.2, 0.1, N, N_MPC)
+x0_nom, x1_nom = sliding_pack.traj.generate_traj_eight(0.3, N, N_MPC)
 #  -------------------------------------------------------------------
 # stack state and derivative of state
 X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
@@ -76,7 +78,7 @@ dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 optObjNom = sliding_pack.to.buildOptObj(
         dynNom, N+N_MPC, planning_config['TO'], X_nom_val, dt=dt)
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
-        0, [0., 0., 0., 0.])
+        0, [0., 0., 0.*(np.pi/180.), 0.])
 if dyn.Nu > dynNom.Nu:
     U_nom_val_opt = cs.vertcat(
             U_nom_val_opt,
@@ -136,6 +138,11 @@ x0 = x_init_val
 for idx in range(Nidx-1):
     print('-------------------------')
     print(idx)
+    # if idx == idxDist:
+    #     print('i died here')
+    #     x0[0] += 0.03
+    #     x0[1] += -0.03
+    #     x0[2] += 30.*(np.pi/180.)
     # ---- solve problem ----
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
             idx, x0, S_goal_val=S_goal_val,
@@ -164,6 +171,8 @@ for idx in range(Nidx-1):
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
+p_map = dyn.p.map(N)
+X_pusher_opt = p_map(X_plot)
 #  -------------------------------------------------------------------
 
 if save_to_file:
@@ -172,21 +181,34 @@ if save_to_file:
     df_state = pd.DataFrame(
                     np.concatenate((
                         np.array(X_nom_val[:, :Nidx]).transpose(),
-                        np.array(X_plot).transpose()
+                        np.array(X_plot).transpose(),
+                        np.array(X_pusher_opt).transpose()
                         ), axis=1),
                     columns=['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
-                             'x_opt', 'y_opt', 'theta_opt', 'psi_opt'])
-    df_state.to_csv('tracking_with_obstacles_state.csv',
+                             'x_opt', 'y_opt', 'theta_opt', 'psi_opt',
+                             'x_pusher', 'y_pusher'])
+    df_state.index.name = 'idx'
+    df_state.to_csv('tracking_circle_cc_state.csv',
                     float_format='%.5f')
+    time = np.linspace(0., T, Nidx-1)
+    print('********************')
+    print(U_plot.transpose().shape)
+    print(cost_plot.shape)
+    print(comp_time.shape)
+    print(time.shape)
+    print(time[:, None].shape)
     df_action = pd.DataFrame(
                     np.concatenate((
                         U_plot.transpose(),
+                        time[:, None],
                         cost_plot,
                         comp_time
                         ), axis=1),
-                    columns=['u0', 'u1', 'u3', 'u3',
-                             'cost', 'comp_time'])
-    df_action.to_csv('tracking_with_obstacles_action.csv',
+                    columns=['u0', 'u1', 'u3', 'u4',
+                    # columns=['u0', 'u1', 'u3',
+                             'time', 'cost', 'comp_time'])
+    df_action.index.name = 'idx'
+    df_action.to_csv('tracking_circle_cc_action.csv',
                      float_format='%.5f')
     #  -------------------------------------------------------------------
 
@@ -196,14 +218,14 @@ plt.rcParams['figure.dpi'] = 150
 if show_anim:
     #  ---------------------------------------------------------------
     fig, ax = sliding_pack.plots.plot_nominal_traj(
-                x0_nom[:Nidx], x1_nom[:Nidx])
+                x0_nom[:Nidx], x1_nom[:Nidx], plot_title='')
     # add computed nominal trajectory
     X_nom_val_opt = np.array(X_nom_val_opt)
-    ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
-            linewidth=2.0, linestyle='dashed')
+    # ax.plot(X_nom_val_opt[0, :], X_nom_val_opt[1, :], color='blue',
+    #         linewidth=2.0, linestyle='dashed')
     X_nom_comp = np.array(X_nom_comp)
-    ax.plot(X_nom_comp[0, :], X_nom_comp[1, :], color='green',
-            linewidth=2.0, linestyle='dashed')
+    # ax.plot(X_nom_comp[0, :], X_nom_comp[1, :], color='green',
+    #         linewidth=2.0, linestyle='dashed')
     # add obstacles
     if optObj.numObs > 0:
         for i in range(len(obsCentre)):
@@ -224,7 +246,7 @@ if show_anim:
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    # ani.save('MPC_NLP_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    ani.save('MPC_MPCC_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results
