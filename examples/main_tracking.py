@@ -22,10 +22,8 @@ import sliding_pack
 
 # Get config files
 #  -------------------------------------------------------------------
-with open('../config/tracking_config.yaml', 'r') as configFile:
-    tracking_config = yaml.load(configFile, Loader=yaml.FullLoader)
-with open('../config/nom_config.yaml', 'r') as configFile:
-    planning_config = yaml.load(configFile, Loader=yaml.FullLoader)
+tracking_config = sliding_pack.load_config('tracking_config.yaml')
+planning_config = sliding_pack.load_config('nom_config.yaml')
 #  -------------------------------------------------------------------
 
 # Set Problem constants

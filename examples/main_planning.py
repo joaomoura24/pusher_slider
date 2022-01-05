@@ -22,8 +22,7 @@ import sliding_pack
 
 # Get config files
 #  -------------------------------------------------------------------
-with open('../config/planning_config.yaml', 'r') as configFile:
-    planning_config = yaml.load(configFile, Loader=yaml.FullLoader)
+planning_config = sliding_pack.load_config('planning_config.yaml')
 #  -------------------------------------------------------------------
 
 # Set Problem constants
