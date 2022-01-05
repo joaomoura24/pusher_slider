@@ -234,18 +234,12 @@ class buildOptObj():
                     self.args.ubg += [cs.inf]
 
         # ---- optimization cost ----
-        if self.X_goal is None:
+        if self.X_goal is not None:
+            self.S_goal = cs.SX.sym('s', self.TH-1)
+            self.opt.f = self.cost_f(cs.mtimes(self.X[:, :-1], self.S_goal) - self.X_goal, self.U[:, -1])
+        else:
             self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
             self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.U[:, -1])
-        else:
-            self.S_goal = cs.SX.sym('s', self.TH-1)
-            # print('*****************')
-            # print(self.X.shape)
-            # print(self.X[:, :-1].shape)
-            # print(self.TH-1)
-            # print(self.S_goal.shape)
-            # sys.exit()
-            self.opt.f = self.cost_f(cs.mtimes(self.X[:, :-1], self.S_goal) - self.X_goal, self.U[:, -1])
         for i in range(self.dyn.Nz):
             self.opt.f += cs.sum1(self.Kz*(self.Z[i].T**2))
 
@@ -286,11 +280,6 @@ class buildOptObj():
             opts_dict['sparse'] = True
         if self.solver_name == 'gurobi':
             if self.no_printing: opts_dict['gurobi.OutputFlag'] = 0
-        # print('************************')
-        # print(cs.vertcat(*self.opt.x).shape)
-        # print(cs.vertcat(*self.opt.g).shape)
-        # print(cs.vertcat(*self.opt.p).shape)
-        # print('************************')
         # ---- Create solver ----
         prob = {'f': self.opt.f,
                 'x': cs.vertcat(*self.opt.x),

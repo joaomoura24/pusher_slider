@@ -31,7 +31,7 @@ with open('../config/planning_config.yaml', 'r') as configFile:
 T = 2.5  # time of the simulation is seconds
 freq = 25  # number of increments per second
 show_anim = True
-save_to_file = False
+save_to_file = True
 #  -------------------------------------------------------------------
 # Computing Problem constants
 #  -------------------------------------------------------------------
@@ -76,8 +76,8 @@ elif optObj.numObs==3:
     obsCentre = [[0.2, 0.2], [0.0, 0.4], [0.3, 0.0]]
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
-x_init = [0., 0., -20.*(np.pi/180.), 0.]
-# x_init = [0., 0., 340.*(np.pi/180.), 0.]
+# x_init = [0., 0., -20.*(np.pi/180.), 0.]
+x_init = [0., 0., 340.*(np.pi/180.), 0.]
 resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProblem(
         0, x_init,
         obsCentre=obsCentre, obsRadius=obsRadius)
@@ -95,12 +95,12 @@ if save_to_file:
     df_state = pd.DataFrame(
                     np.array(cs.vertcat(X_nom_val_opt,X_pusher_opt)).transpose(),
                     columns=['x_slider', 'y_slider', 'theta_slider', 'psi_pusher', 'x_pusher', 'y_pusher'])
-    df_state.to_csv('planning_with_obstacles_state.csv',
+    df_state.to_csv('planning_positive_angle_state.csv',
                     float_format='%.5f')
     df_action = pd.DataFrame(
                     np.array(U_nom_val_opt).transpose(),
                     columns=['u0', 'u1', 'u3', 'u3'])
-    df_action.to_csv('planning_with_obstacles_action.csv',
+    df_action.to_csv('planning_positive_angle_action.csv',
                      float_format='%.5f')
     #  -------------------------------------------------------------------
 
