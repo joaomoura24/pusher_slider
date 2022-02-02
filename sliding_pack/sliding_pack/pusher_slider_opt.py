@@ -19,7 +19,7 @@ import sliding_pack
 class buildOptObj():
 
     def __init__(self, dyn_class, timeHorizon, configDict, X_nom_val,
-                 U_nom_val=None, dt=0.1):
+                 U_nom_val=None, dt=0.1, useGoalFlag=False):
 
         # init parameters
         self.dyn = dyn_class
@@ -32,7 +32,7 @@ class buildOptObj():
         self.numObs = configDict['numObs']
         self.X_nom_val = X_nom_val
         self.U_nom_val = U_nom_val
-        self.X_goal = configDict['X_goal']
+        self.useGoalFlag = useGoalFlag
         self.solverName = configDict['solverName']
         self.linDyn = configDict['linDynFlag']
         self.code_gen = configDict['codeGenFlag']
@@ -234,9 +234,10 @@ class buildOptObj():
                     self.args.ubg += [cs.inf]
 
         # ---- optimization cost ----
-        if self.X_goal is not None:
+        if self.useGoalFlag:
             self.S_goal = cs.SX.sym('s', self.TH-1)
-            self.opt.f = self.cost_f(cs.mtimes(self.X[:, :-1], self.S_goal) - self.X_goal, self.U[:, -1])
+            self.X_goal_var = cs.SX.sym('x_goal_var', self.dyn.Nx)
+            self.opt.f = self.cost_f(cs.mtimes(self.X[:, :-1], self.S_goal) - self.X_goal_var, self.U[:, -1])
         else:
             self.opt.f = cs.sum2(self.cost_F(self.X_bar[:, :-1], self.U))
             self.opt.f += self.K_goal*self.cost_f(self.X_bar[:, -1], self.U[:, -1])
@@ -247,7 +248,8 @@ class buildOptObj():
         self.opt.p = []
         self.opt.p += self.x0.elements()
         self.opt.p += self.X_nom.elements()
-        if self.X_goal is not None:
+        if self.useGoalFlag:
+            self.opt.p += self.X_goal_var.elements()
             self.opt.p += self.S_goal.elements()
         if self.linDyn:
             self.opt.p += self.U_nom.elements()
@@ -301,7 +303,7 @@ class buildOptObj():
 
     def solveProblem(self, idx, x0,
                      x_warmStart=None, u_warmStart=None,
-                     obsCentre=None, obsRadius=None, S_goal_val=None):
+                     obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None):
         if self.numObs > 0:
             if self.numObs != len(obsCentre) or self.numObs != len(obsRadius):
                 print("Number of obstacles does not match the config file!", file=sys.stderr)
@@ -310,7 +312,12 @@ class buildOptObj():
         p_ = []  # set to empty before reinitialize
         p_ += x0
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
-        if self.X_goal is not None:
+        if self.useGoalFlag:
+            if X_goal_val is None:
+                p_ += x0
+            else:
+                p_ += X_goal_val
+            # ----------------------
             if S_goal_val is None:
                 p_ += [0.]*(self.TH-2)
                 p_ += [1.]
