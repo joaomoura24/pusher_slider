@@ -102,26 +102,26 @@ class buildOptObj():
             __u_nom = cs.SX.sym('u_nom', self.dyn.Nu)
             __x_nom = cs.SX.sym('x_nom', self.dyn.Nx)
             __A_func = cs.Function(
-                    'A_func', [__x_nom, __u_nom],
-                    [cs.jacobian(self.dyn.f(__x_nom, __u_nom), __x_nom)],
-                    ['x', 'u'], ['A'])
+                    'A_func', [__x_nom, __u_nom, self.dyn.beta],
+                    [cs.jacobian(self.dyn.f(__x_nom, __u_nom, self.dyn.beta), __x_nom)],
+                    ['x', 'u', 'beta'], ['A'])
             __B_func = cs.Function(
                     'B_func', [__x_nom, __u_nom],
-                    [cs.jacobian(self.dyn.f(__x_nom, __u_nom), __u_nom)],
-                    ['x', 'u'], ['B'])
+                    [cs.jacobian(self.dyn.f(__x_nom, __u_nom, self.dyn.beta), __u_nom)],
+                    ['x', 'u', 'beta'], ['B'])
             # define dynamics error
             __x_bar_next = cs.SX.sym('x_bar_next', self.dyn.Nx)
             __u_bar = cs.SX.sym('u_bar', self.dyn.Nu)
             self.f_error = cs.Function(
                     'f_error',
-                    [__x_nom, __u_nom, __x_bar, __x_bar_next, __u_bar],
+                    [__x_nom, __u_nom, __x_bar, __x_bar_next, __u_bar, self.dyn.beta],
                     [__x_bar_next-__x_bar-dt*(cs.mtimes(__A_func(__x_nom, __u_nom), __x_bar) + cs.mtimes(__B_func(__x_nom,__u_nom),__u_bar))])
         else:
             __x_next = cs.SX.sym('__x_next', self.dyn.Nx)
             self.f_error = cs.Function(
                     'f_error',
-                    [self.dyn.x, self.dyn.u, __x_next],
-                    [__x_next-self.dyn.x-dt*self.dyn.f(self.dyn.x,self.dyn.u)])
+                    [self.dyn.x, self.dyn.u, __x_next, self.dyn.beta],
+                    [__x_next-self.dyn.x-dt*self.dyn.f(self.dyn.x,self.dyn.u,self.dyn.beta)])
         # ---- Map dynamics constraint ----
         self.F_error = self.f_error.map(self.TH-1)
         #  -------------------------------------------------------------------
@@ -200,11 +200,13 @@ class buildOptObj():
             self.opt.g += self.F_error(
                     self.X_nom[:, :-1], self.U_nom,
                     self.X_bar[:, :-1], self.X_bar[:, 1:],
-                    self.U_bar).elements()
+                    self.U_bar,
+                    self.dyn.beta).elements()
         else:
             self.opt.g += self.F_error(
                     self.X[:, :-1], self.U, 
-                    self.X[:, 1:]).elements()
+                    self.X[:, 1:],
+                    self.dyn.beta).elements()
         self.args.lbg += [0.] * self.dyn.Nx * (self.TH-1)
         self.args.ubg += [0.] * self.dyn.Nx * (self.TH-1)
         # ---- Friction constraints ----
@@ -241,6 +243,7 @@ class buildOptObj():
 
         # ---- Set optimization parameters ----
         self.opt.p = []
+        self.opt.p += self.dyn.beta.elements()
         self.opt.p += self.x0.elements()
         self.opt.p += self.X_nom.elements()
         if self.useGoalFlag:
@@ -278,6 +281,11 @@ class buildOptObj():
         if self.solver_name == 'gurobi':
             if self.no_printing: opts_dict['gurobi.OutputFlag'] = 0
         # ---- Create solver ----
+        # print('************************')
+        # print(len(self.opt.x))
+        # print(len(self.opt.g))
+        # print(len(self.opt.p))
+        # print('************************')
         prob = {'f': self.opt.f,
                 'x': cs.vertcat(*self.opt.x),
                 'g': cs.vertcat(*self.opt.g),
@@ -296,7 +304,7 @@ class buildOptObj():
             self.solver = cs.qpsol('solver', self.solver_name, prob, opts_dict)
         #  -------------------------------------------------------------------
 
-    def solveProblem(self, idx, x0,
+    def solveProblem(self, idx, x0, beta,
                      X_warmStart=None, u_warmStart=None,
                      obsCentre=None, obsRadius=None, S_goal_val=None, X_goal_val=None):
         if self.numObs > 0:
@@ -305,6 +313,8 @@ class buildOptObj():
                 sys.exit()
         # ---- setting parameters ---- 
         p_ = []  # set to empty before reinitialize
+        p_ += beta
+        print(beta)
         p_ += x0
         p_ += self.X_nom_val[:, idx:(idx+self.TH)].elements()
         if self.useGoalFlag:
@@ -354,6 +364,8 @@ class buildOptObj():
                 lbx=self.args.lbx, ubx=self.args.ubx,
                 lbg=self.args.lbg, ubg=self.args.ubg,
                 p=p_)
+        # print(sol)
+        # sys.exit()
         # ---- save computation time ---- 
         t_opt = time.time() - start_time
         # ---- decode solution ----

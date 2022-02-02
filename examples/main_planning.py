@@ -76,16 +76,22 @@ elif optObj.numObs==3:
     obsRadius = [0.05, 0.05, 0.05]
 #  ------------------------------------------------------------------
 x_init = [0., 0., -20.*(np.pi/180.), 0.]
+beta = [
+    planning_config['dynamics']['xLenght'],
+    planning_config['dynamics']['yLenght'],
+    planning_config['dynamics']['pusherRadious']
+]
 # x_init = [0., 0., 340.*(np.pi/180.), 0.]
 resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProblem(
-        0, x_init,
+        0, x_init, beta,
         X_warmStart=X_nom_val,
         obsCentre=obsCentre, obsRadius=obsRadius,
         X_goal_val=X_goal)
-f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
+f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
 f_rollout = f_d.mapaccum(N-1)
 print('comp time: ', t_opt)
-p_map = dyn.p.map(N)
+p_new = cs.Function('p_new', [dyn.x], [dyn.p(dyn.x, beta)])
+p_map = p_new.map(N)
 X_pusher_opt = p_map(X_nom_val_opt)
 #  ------------------------------------------------------------------
 
@@ -124,12 +130,12 @@ if show_anim:
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
-    dyn.set_patches(ax, X_nom_val_opt)
+    dyn.set_patches(ax, X_nom_val_opt, beta)
     # call the animation
     ani = animation.FuncAnimation(
             fig,
             dyn.animate,
-            fargs=(ax, X_nom_val_opt),
+            fargs=(ax, X_nom_val_opt, beta),
             frames=N-1,
             interval=dt*1000,  # microseconds
             blit=True,

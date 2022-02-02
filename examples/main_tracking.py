@@ -77,8 +77,13 @@ dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 )
 optObjNom = sliding_pack.to.buildOptObj(
         dynNom, N+N_MPC, planning_config['TO'], dt=dt)
+beta = [
+    planning_config['dynamics']['xLenght'],
+    planning_config['dynamics']['yLenght'],
+    planning_config['dynamics']['pusherRadious']
+]
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
-        0, [0., 0., 0.*(np.pi/180.), 0.],
+        0, [0., 0., 0.*(np.pi/180.), 0.], beta,
         X_warmStart=X_nom_val)
 if dyn.Nu > dynNom.Nu:
     U_nom_val_opt = cs.vertcat(
@@ -86,7 +91,7 @@ if dyn.Nu > dynNom.Nu:
             cs.DM.zeros(np.abs(dyn.Nu - dynNom.Nu), N+N_MPC-1))
 elif dynNom.Nu > dyn.Nu:
     U_nom_val_opt = U_nom_val_opt[:dyn.Nu, :]
-f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
+f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u, beta)*dt])
 f_rollout = f_d.mapaccum(N+N_MPC-1)
 X_nom_comp = f_rollout([0., 0., 0., 0.], U_nom_val_opt)
 #  ------------------------------------------------------------------
@@ -146,13 +151,14 @@ for idx in range(Nidx-1):
     #     x0[2] += 30.*(np.pi/180.)
     # ---- solve problem ----
     resultFlag, x_opt, u_opt, del_opt, f_opt, t_opt = optObj.solveProblem(
-            idx, x0, S_goal_val=S_goal_val,
+            idx, x0, beta,
+            S_goal_val=S_goal_val,
             obsCentre=obsCentre, obsRadius=obsRadius)
     print(f_opt)
     # ---- update initial state (simulation) ----
     u0 = u_opt[:, 0].elements()
     # x0 = x_opt[:,1].elements()
-    x0 = (x0 + dyn.f(x0, u0)*dt).elements()
+    x0 = (x0 + dyn.f(x0, u0, beta)*dt).elements()
     # ---- store values for plotting ----
     comp_time[idx] = t_opt
     success[idx] = resultFlag
@@ -172,7 +178,8 @@ for idx in range(Nidx-1):
 #  -------------------------------------------------------------------
 # show sparsity pattern
 # sliding_pack.plots.plot_sparsity(cs.vertcat(*opt.g), cs.vertcat(*opt.x), xu_opt)
-p_map = dyn.p.map(N)
+p_new = cs.Function('p_new', [dyn.x], [dyn.p(dyn.x, beta)])
+p_map = p_new.map(N)
 X_pusher_opt = p_map(X_plot)
 #  -------------------------------------------------------------------
 
@@ -235,19 +242,19 @@ if show_anim:
     # set window size
     fig.set_size_inches(8, 6, forward=True)
     # get slider and pusher patches
-    dyn.set_patches(ax, X_plot)
+    dyn.set_patches(ax, X_plot, beta)
     # call the animation
     ani = animation.FuncAnimation(
             fig,
             dyn.animate,
-            fargs=(ax, X_plot, X_future),
+            fargs=(ax, X_plot, beta, X_future),
             frames=Nidx-1,
             interval=dt*1000,  # microseconds
             blit=True,
             repeat=False,
     )
     # to save animation, uncomment the line below:
-    ani.save('MPC_MPCC_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
+    # ani.save('MPC_MPCC_eight.mp4', fps=25, extra_args=['-vcodec', 'libx264'])
 #  -------------------------------------------------------------------
 
 # Plot Optimization Results

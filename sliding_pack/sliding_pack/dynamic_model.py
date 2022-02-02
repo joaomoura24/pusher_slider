@@ -25,21 +25,22 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # init parameters
         self.mode = contactMode
         # self.sl = configDict['sideLenght']  # side dimension of the square slider [m]
-        self.xl = configDict['xLenght']  # x dim of the slider [m]
-        self.yl = configDict['yLenght']  # y dim of the slider [m]
-        self.Radius = np.sqrt((self.xl/2.)**2 + (self.yl/2.)**2)
-        self.r_pusher = configDict['pusherRadious']  # radius of the pusher [m]
         self.miu = configDict['pusherFricCoef']  # fric between pusher and slider
         self.f_lim = configDict['pusherForceLim']
         self.psi_dot_lim = configDict['pusherAngleVelLim']
-        self.psi_lim = 0.9*np.arctan2(self.yl, self.xl)
-        print('****************************************')
-        print(np.rad2deg(self.psi_lim))
-        print('****************************************')
         self.Kz_max = configDict['Kz_max']
         self.Kz_min = configDict['Kz_min']
+        #  -------------------------------------------------------------------
         # vector of physical parameters
-        self.beta = [self.xl, self.yl, self.r_pusher]
+        # self.beta = [self.xl, self.yl, self.r_pusher]
+        self.Nbeta = 3
+        self.beta = cs.SX.sym('beta', self.Nbeta)
+        # beta[0] - xl
+        # beta[1] - yl
+        # beta[2] - r_pusher
+        #  -------------------------------------------------------------------
+        # self.psi_lim = 0.9*cs.arctan2(self.beta[0], self.beta[1])
+        self.psi_lim = 0.9
 
         # system constant variables
         self.Nx = 4  # number of state variables
@@ -100,10 +101,10 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         __rc_prov = cs.mtimes(__R[0:2,0:2].T, __p - __x[0:2])
         __psi_prov = -cs.atan2(__rc_prov[1], __xl/2)
         self.psi_ = cs.Function('psi_', [__x,__p,__beta], [__psi_prov])
-        self.psi = cs.Function('psi', [self.x,__p], [self.psi_(self.x, __p, self.beta)])
+        self.psi = cs.Function('psi', [self.x,__p,self.beta], [self.psi_(self.x, __p, self.beta)])
         #  -------------------------------------------------------------------
         self.p_ = cs.Function('p_', [__x,__beta], [__p_pusher], ['x', 'b'], ['p'])
-        self.p = cs.Function('p', [self.x], [self.p_(self.x, self.beta)], ['x'], ['p'])
+        self.p = cs.Function('p', [self.x, self.beta], [self.p_(self.x, self.beta)], ['x', 'b'], ['p'])
         #  -------------------------------------------------------------------
         self.s = cs.Function('s', [self.x], [self.x[0:3]], ['x'], ['s'])
         #  -------------------------------------------------------------------
@@ -156,7 +157,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
             #  -------------------------------------------------------------------
             # dynamics equation
-            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u'], ['f'])
+            self.f = cs.Function('f', [self.x, self.u, self.beta], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u', 'b'], ['f'])
         elif self.mode == 'sliding_cc_slack':
             # u - control vector
             # u[0] - normal force in the local frame
@@ -196,7 +197,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim, self.psi_dot_lim]
             #  -------------------------------------------------------------------
             # dynamics equation
-            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u'], ['f'])
+            self.f = cs.Function('f', [self.x, self.u, self.beta], [self.f_(self.x, cs.vertcat(self.u[0:2], self.u[2]-self.u[3]), self.beta)],  ['x', 'u', 'b'], ['f'])
         elif self.mode == 'sliding_mi':
             # u - control vector
             # u[0] - normal force in the local frame
@@ -234,7 +235,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.ubu = [self.f_lim, self.f_lim, self.psi_dot_lim]
             #  -------------------------------------------------------------------
             # dynamics equation
-            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, self.u, self.beta)],  ['x', 'u'], ['f'])
+            self.f = cs.Function('f', [self.x, self.u, self.beta], [self.f_(self.x, self.u, self.beta)],  ['x', 'u', 'b'], ['f'])
         elif self.mode == 'sticking':
             # u - control vector
             # u[0] - normal force in the local frame
@@ -263,22 +264,24 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
             self.ubu = [self.f_lim, self.f_lim]
             #  -------------------------------------------------------------------
             # dynamics equation
-            self.f = cs.Function('f', [self.x, self.u], [self.f_(self.x, cs.vertcat(self.u, 0.0), self.beta)],  ['x', 'u'], ['f'])
+            self.f = cs.Function('f', [self.x, self.u, self.beta], [self.f_(self.x, cs.vertcat(self.u, 0.0), self.beta)],  ['x', 'u', 'b'], ['f'])
         else:
             print('Specified mode ``{}`` does not exist!'.format(self.mode))
             sys.exit(-1)
         #  -------------------------------------------------------------------
 
-    def set_patches(self, ax, x_data):
+    def set_patches(self, ax, x_data, beta):
+        Xl = beta[0]
+        Yl = beta[1]
+        R_pusher = beta[2]
         x0 = x_data[:, 0]
         # R0 = np.array(self.R(x0))
         R0 = np.eye(3)
-        d0 = R0.dot(np.array([-self.xl/2., -self.yl/2., 0]))
+        d0 = R0.dot(np.array([-Xl/2., -Yl/2., 0]))
         self.slider = patches.Rectangle(
-                # x0[0:2]+d0[0:2], self.xl, self.yl, angle=np.rad2deg(x0[2]))
-                x0[0:2]+d0[0:2], self.xl, self.yl, angle=0.0)
+                x0[0:2]+d0[0:2], Xl, Yl, angle=0.0)
         self.pusher = patches.Circle(
-                np.array(self.p(x0)), radius=self.r_pusher, color='black')
+                np.array(self.p(x0, beta)), radius=R_pusher, color='black')
         self.path_past, = ax.plot(x0[0], x0[1], color='orange')
         self.path_future, = ax.plot(x0[0], x0[1],
                 color='orange', linestyle='dashed')
@@ -286,12 +289,13 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         ax.add_patch(self.pusher)
         self.path_past.set_linewidth(2)
 
-    def animate(self, i, ax, x_data, X_future=None):
+    def animate(self, i, ax, x_data, beta, X_future=None):
+        Xl = beta[0]
+        Yl = beta[1]
         xi = x_data[:, i]
         # distance between centre of square reference corner
         Ri = np.array(self.R(xi))
-        di = Ri.dot(np.array([-self.xl/2, -self.yl/2, 0]))
-        # di = np.array(cs.mtimes(self.R(xi), [-self.xl/2, -self.yl/2, 0]).T)[0]
+        di = Ri.dot(np.array([-Xl/2, -Yl/2, 0]))
         # square reference corner
         ci = xi[0:3] + di
         # compute transformation with respect to rotation angle xi[2]
@@ -302,7 +306,7 @@ class Sys_sq_slider_quasi_static_ellip_lim_surf():
         # Set changes
         self.slider.set_transform(trans_ax+trans_i)
         self.slider.set_xy([ci[0], ci[1]])
-        self.pusher.set_center(np.array(self.p(xi)))
+        self.pusher.set_center(np.array(self.p(xi, beta)))
         # Set path changes
         if self.path_past is not None:
             self.path_past.set_data(x_data[0, 0:i], x_data[1, 0:i])
