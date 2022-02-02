@@ -76,9 +76,10 @@ dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
         planning_config['TO']['contactMode']
 )
 optObjNom = sliding_pack.to.buildOptObj(
-        dynNom, N+N_MPC, planning_config['TO'], X_nom_val, dt=dt)
+        dynNom, N+N_MPC, planning_config['TO'], dt=dt)
 resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
-        0, [0., 0., 0.*(np.pi/180.), 0.])
+        0, [0., 0., 0.*(np.pi/180.), 0.],
+        X_warmStart=X_nom_val)
 if dyn.Nu > dynNom.Nu:
     U_nom_val_opt = cs.vertcat(
             U_nom_val_opt,

@@ -62,7 +62,7 @@ X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, d
 # Compute nominal actions for sticking contact
 #  ------------------------------------------------------------------
 optObj = sliding_pack.to.buildOptObj(
-        dyn, N, planning_config['TO'], X_nom_val, dt=dt, useGoalFlag=True)
+        dyn, N, planning_config['TO'], dt=dt, useGoalFlag=True)
 # Set obstacles
 #  ------------------------------------------------------------------
 if optObj.numObs==0:
@@ -79,6 +79,7 @@ x_init = [0., 0., -20.*(np.pi/180.), 0.]
 # x_init = [0., 0., 340.*(np.pi/180.), 0.]
 resultFlag, X_nom_val_opt, U_nom_val_opt, other_opt, _, t_opt = optObj.solveProblem(
         0, x_init,
+        X_warmStart=X_nom_val,
         obsCentre=obsCentre, obsRadius=obsRadius,
         X_goal_val=X_goal)
 f_d = cs.Function('f_d', [dyn.x, dyn.u], [dyn.x + dyn.f(dyn.x, dyn.u)*dt])
