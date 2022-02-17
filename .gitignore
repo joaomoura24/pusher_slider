@@ -1,3 +1,4 @@
+tags
 .*.swp
 *.mp4
 *.png
@@ -11,3 +12,5 @@ tikz_schematics/*
 *.so
 data/
 __pycache__
+build/
+*.csv
