@@ -106,7 +106,7 @@ class buildOptObj():
                     [cs.jacobian(self.dyn.f(__x_nom, __u_nom, self.dyn.beta), __x_nom)],
                     ['x', 'u', 'beta'], ['A'])
             __B_func = cs.Function(
-                    'B_func', [__x_nom, __u_nom],
+                    'B_func', [__x_nom, __u_nom, self.dyn.beta],
                     [cs.jacobian(self.dyn.f(__x_nom, __u_nom, self.dyn.beta), __u_nom)],
                     ['x', 'u', 'beta'], ['B'])
             # define dynamics error
@@ -115,7 +115,7 @@ class buildOptObj():
             self.f_error = cs.Function(
                     'f_error',
                     [__x_nom, __u_nom, __x_bar, __x_bar_next, __u_bar, self.dyn.beta],
-                    [__x_bar_next-__x_bar-dt*(cs.mtimes(__A_func(__x_nom, __u_nom), __x_bar) + cs.mtimes(__B_func(__x_nom,__u_nom),__u_bar))])
+                    [__x_bar_next-__x_bar-dt*(cs.mtimes(__A_func(__x_nom, __u_nom, self.dyn.beta), __x_bar) + cs.mtimes(__B_func(__x_nom,__u_nom, self.dyn.beta),__u_bar))])
         else:
             __x_next = cs.SX.sym('__x_next', self.dyn.Nx)
             self.f_error = cs.Function(
