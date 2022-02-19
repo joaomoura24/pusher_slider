@@ -22,8 +22,8 @@ import sliding_pack
 
 #  -------------------------------------------------------------------
 # cc or mi
-contact = 'cc'
-# contact = 'mi'
+# contact = 'cc'
+contact = 'mi'
 #  -------------------------------------------------------------------
 
 # Get config files
@@ -39,10 +39,10 @@ with open('../config/nom_config.yaml', 'r') as configFile:
 #  -------------------------------------------------------------------
 T = 10  # time of the simulation is seconds
 freq = 25  # number of increments per second
-N_MPC = 25  # time horizon for the MPC controller
+# N_MPC = 25  # time horizon for the MPC controller
 # x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 x_init_val = [0., 0., 0., 0.]
-show_anim = False
+show_anim = True
 show_plot = False
 save_to_file = True
 #  -------------------------------------------------------------------
@@ -61,52 +61,54 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 )
 #  -------------------------------------------------------------------
 
-# Generate Nominal Trajectory
-#  -------------------------------------------------------------------
-X_goal = tracking_config['TO']['X_goal']
-x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
-#  -------------------------------------------------------------------
-# stack state and derivative of state
-X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
-#  ------------------------------------------------------------------
-
-# Compute nominal actions for sticking contact
-#  ------------------------------------------------------------------
-dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
-        planning_config['dynamics'],
-        planning_config['TO']['contactMode']
-)
-optObjNom = sliding_pack.to.buildOptObj(
-        dynNom, N+N_MPC, planning_config['TO'], X_nom_val, dt=dt)
-resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
-        0, [0., 0., 0., 0.])
-if dyn.Nu > dynNom.Nu:
-    U_nom_val_opt = cs.vertcat(
-            U_nom_val_opt,
-            cs.DM.zeros(np.abs(dyn.Nu - dynNom.Nu), N+N_MPC-1))
-elif dynNom.Nu > dyn.Nu:
-    U_nom_val_opt = U_nom_val_opt[:dyn.Nu, :]
-#  ------------------------------------------------------------------
-
-# define optimization problem
-#  -------------------------------------------------------------------
-optObj = sliding_pack.to.buildOptObj(
-        dyn, N_MPC, tracking_config['TO'],
-        X_nom_val, U_nom_val_opt, dt=dt,
-)
-#  -------------------------------------------------------------------
-
 #  -------------------------------------------------------------------
 # creation of files
-column_names = ['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
-                'x_opt', 'y_opt', 'theta_opt', 'psi_opt']
+# column_names = ['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
+#                 'x_opt', 'y_opt', 'theta_opt', 'psi_opt']
+column_names = ['comp_time']
+ang_dist = 0.
 #  -------------------------------------------------------------------
 
-for ang_dist in np.arange(0., 2.55, 0.05):
-    print('***************************')
-    print(ang_dist)
+# for N_MPC in range(5, 76, 1):
+for N_MPC in range(5, 10, 1):
+
+    # Generate Nominal Trajectory
+    #  -------------------------------------------------------------------
+    X_goal = tracking_config['TO']['X_goal']
+    x0_nom, x1_nom = sliding_pack.traj.generate_traj_circle(-np.pi/2, 3*np.pi/2, 0.2, N, N_MPC)
+    #  -------------------------------------------------------------------
+    # stack state and derivative of state
+    X_nom_val, _ = sliding_pack.traj.compute_nomState_from_nomTraj(x0_nom, x1_nom, dt)
+    #  ------------------------------------------------------------------
+
+    # Compute nominal actions for sticking contact
+    #  ------------------------------------------------------------------
+    dynNom = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
+            planning_config['dynamics'],
+            planning_config['TO']['contactMode']
+    )
+    optObjNom = sliding_pack.to.buildOptObj(
+            dynNom, N+N_MPC, planning_config['TO'], X_nom_val, dt=dt)
+    resultFlag, X_nom_val_opt, U_nom_val_opt, _, _, _ = optObjNom.solveProblem(
+            0, [0., 0., 0., 0.])
+    if dyn.Nu > dynNom.Nu:
+        U_nom_val_opt = cs.vertcat(
+                U_nom_val_opt,
+                cs.DM.zeros(np.abs(dyn.Nu - dynNom.Nu), N+N_MPC-1))
+    elif dynNom.Nu > dyn.Nu:
+        U_nom_val_opt = U_nom_val_opt[:dyn.Nu, :]
+    #  ------------------------------------------------------------------
+
+    # define optimization problem
+    #  -------------------------------------------------------------------
+    optObj = sliding_pack.to.buildOptObj(
+            dyn, N_MPC, tracking_config['TO'],
+            X_nom_val, U_nom_val_opt, dt=dt,
+    )
+    #  -------------------------------------------------------------------
+
     df = pd.DataFrame(columns=column_names)
-    for i_runs in range(10):
+    for i_runs in range(1):
         # Initialize variables for plotting
         #  -------------------------------------------------------------------
         X_plot = np.empty([dyn.Nx, Nidx])
@@ -188,10 +190,11 @@ for ang_dist in np.arange(0., 2.55, 0.05):
             #  Save data to file using pandas
             #  -------------------------------------------------------------------
             df_state = pd.DataFrame(
-                            np.concatenate((
-                                np.array(X_nom_val[:, :Nidx]).transpose(),
-                                np.array(X_plot).transpose()
-                                ), axis=1),
+                            np.array(comp_time),
+                            # np.concatenate((
+                            #     np.array(X_nom_val[:, :Nidx]).transpose(),
+                            #     np.array(X_plot).transpose()
+                            #     ), axis=1),
                             columns=column_names)
             df = df.append(df_state, ignore_index=True)
             #  -------------------------------------------------------------------
@@ -199,7 +202,7 @@ for ang_dist in np.arange(0., 2.55, 0.05):
     if save_to_file:
         #  Save data to file using pandas
         #  -------------------------------------------------------------------
-        df.to_csv('data_noise/{}/tracking_with_noise_{:.2f}_{}.csv'.format(contact, ang_dist, contact),
+        df.to_csv('data_th/{}/tracking_time_horizon_{}_{}.csv'.format(contact, N_MPC, contact),
                         float_format='%.5f')
         #  -------------------------------------------------------------------
 
