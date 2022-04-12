@@ -24,6 +24,10 @@ import sliding_pack
 # cc or mi
 # contact = 'cc'
 contact = 'mi'
+num_rep = 10
+ang_dist = 3.0
+# ang_dist = 1.5
+# ang_dist = 0.
 #  -------------------------------------------------------------------
 
 # Get config files
@@ -42,7 +46,7 @@ freq = 25  # number of increments per second
 # N_MPC = 25  # time horizon for the MPC controller
 # x_init_val = [-0.01, 0.03, 30*(np.pi/180.), 0]
 x_init_val = [0., 0., 0., 0.]
-show_anim = True
+show_anim = False
 show_plot = False
 save_to_file = True
 #  -------------------------------------------------------------------
@@ -63,14 +67,12 @@ dyn = sliding_pack.dyn.Sys_sq_slider_quasi_static_ellip_lim_surf(
 
 #  -------------------------------------------------------------------
 # creation of files
-# column_names = ['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
-#                 'x_opt', 'y_opt', 'theta_opt', 'psi_opt']
-column_names = ['comp_time']
-ang_dist = 0.
+column_names_state = ['x_nom', 'y_nom', 'theta_nom', 'psi_nom',
+                'x_opt', 'y_opt', 'theta_opt', 'psi_opt']
+column_names_time = ['comp_time']
 #  -------------------------------------------------------------------
 
-# for N_MPC in range(5, 76, 1):
-for N_MPC in range(5, 10, 1):
+for N_MPC in range(5, 76, 1):
 
     # Generate Nominal Trajectory
     #  -------------------------------------------------------------------
@@ -107,8 +109,9 @@ for N_MPC in range(5, 10, 1):
     )
     #  -------------------------------------------------------------------
 
-    df = pd.DataFrame(columns=column_names)
-    for i_runs in range(1):
+    df_s = pd.DataFrame(columns=column_names_state)
+    df_t = pd.DataFrame(columns=column_names_time)
+    for i_runs in range(num_rep):
         # Initialize variables for plotting
         #  -------------------------------------------------------------------
         X_plot = np.empty([dyn.Nx, Nidx])
@@ -189,21 +192,26 @@ for N_MPC in range(5, 10, 1):
         if save_to_file:
             #  Save data to file using pandas
             #  -------------------------------------------------------------------
-            df_state = pd.DataFrame(
+            df_time = pd.DataFrame(
                             np.array(comp_time),
-                            # np.concatenate((
-                            #     np.array(X_nom_val[:, :Nidx]).transpose(),
-                            #     np.array(X_plot).transpose()
-                            #     ), axis=1),
-                            columns=column_names)
-            df = df.append(df_state, ignore_index=True)
+                            columns=column_names_time)
+            df_state = pd.DataFrame(
+                            np.concatenate((
+                                np.array(X_nom_val[:, :Nidx]).transpose(),
+                                np.array(X_plot).transpose()
+                                ), axis=1),
+                            columns=column_names_state)
+            df_s = df_s.append(df_state, ignore_index=True)
+            df_t = df_t.append(df_time, ignore_index=True)
             #  -------------------------------------------------------------------
 
     if save_to_file:
         #  Save data to file using pandas
         #  -------------------------------------------------------------------
-        df.to_csv('data_th/{}/tracking_time_horizon_{}_{}.csv'.format(contact, N_MPC, contact),
-                        float_format='%.5f')
+        df_s.to_csv('data_th/{}/tracking_time_horizon_{}_{}_state.csv'.format(
+            contact, N_MPC, contact), float_format='%.5f')
+        df_t.to_csv('data_th/{}/tracking_time_horizon_{}_{}_time.csv'.format(
+            contact, N_MPC, contact), float_format='%.5f')
         #  -------------------------------------------------------------------
 
 if show_plot:

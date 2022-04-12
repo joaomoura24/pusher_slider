@@ -23,9 +23,9 @@ for i in range(num_files):
     y_opt = df_in["y_opt"].to_numpy()
     # compute error percentiles
     err = np.sqrt((x_nom - x_opt)**2 + (y_nom - y_opt)**2)
-    median = np.percentile(err, 50)
-    lower = np.percentile(err, 10)
-    upper = np.percentile(err, 90)
+    median = np.percentile(err, 50)*1000
+    lower = np.percentile(err, 10)*1000
+    upper = np.percentile(err, 90)*1000
     # save data
     data_i = np.array([ang_dist, median, lower, upper]).transpose()
     data[i, :] = data_i
